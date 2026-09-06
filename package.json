@@ -1,0 +1,13 @@
+{
+  "name": "wormgpt-chatgpt-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cd app && npm install && npm run build",
+    "start": "cd server && npm start"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.10"
+  }
+}
