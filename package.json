@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "cd app && npm install && npm run build",
-    "start": "cd server && npm start"
+    "build": "cd app && npm install && npm run build && cd ../server && npm install",
+    "start": "node server/index.js"
   },
   "dependencies": {
     "adm-zip": "^0.5.10"
