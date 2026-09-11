@@ -1,6 +1,6 @@
-/* Ultra-Clean Modern ChatGPT Light Theme for WormGPT */
+/* HoangHaGPT Comprehensive Multi-Theme & Canvas System */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Cinzel:wght@600;800&display=swap');
 
 * {
   -webkit-font-smoothing: antialiased;
@@ -8,21 +8,116 @@
   box-sizing: border-box;
 }
 
+/* ========================================================================= */
+/* THEMES CSS VARIABLES                                                      */
+/* ========================================================================= */
+
+:root, .theme-light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f9f9f9;
+  --bg-surface: #f4f4f4;
+  --bg-card: #ffffff;
+  --border-subtle: #e5e7eb;
+  --border-strong: #d1d5db;
+  --text-primary: #0d0d0d;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --dock-bg: #f4f4f4;
+  --dock-border: rgba(0, 0, 0, 0.08);
+  --dock-focus-bg: #ffffff;
+  --dock-focus-border: rgba(0, 0, 0, 0.25);
+  --dock-focus-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --code-header-bg: #1e1e1e;
+  --code-body-bg: #141414;
+  --user-bubble-bg: #f4f4f4;
+  --user-bubble-text: #0d0d0d;
+  --ai-text: #0d0d0d;
+  --accent-color: #0d0d0d;
+  --accent-hover: #262626;
+  --accent-rgb: 13, 13, 13;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --thinking-bg: #f8fafc;
+  --thinking-border: #e2e8f0;
+  --thinking-text: #475569;
+  --badge-glow: rgba(16, 185, 129, 0.15);
+  --theme-banner: transparent;
+}
+
+.theme-dark {
+  --bg-primary: #181818;
+  --bg-secondary: #121212;
+  --bg-surface: #222222;
+  --bg-card: #1f1f1f;
+  --border-subtle: #2e2e2e;
+  --border-strong: #3e3e3e;
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --dock-bg: #222222;
+  --dock-border: rgba(255, 255, 255, 0.12);
+  --dock-focus-bg: #282828;
+  --dock-focus-border: rgba(255, 255, 255, 0.3);
+  --dock-focus-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --code-header-bg: #141414;
+  --code-body-bg: #0c0c0c;
+  --user-bubble-bg: #2c2c2c;
+  --user-bubble-text: #f9fafb;
+  --ai-text: #f3f4f6;
+  --accent-color: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-rgb: 59, 130, 246;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --thinking-bg: #1a202c;
+  --thinking-border: #2d3748;
+  --thinking-text: #94a3b8;
+  --badge-glow: rgba(59, 130, 246, 0.2);
+  --theme-banner: transparent;
+}
+
+.theme-devil {
+  --bg-primary: #090306;
+  --bg-secondary: #050103;
+  --bg-surface: #15050b;
+  --bg-card: #120409;
+  --border-subtle: #3a0815;
+  --border-strong: #650b23;
+  --text-primary: #fff1f2;
+  --text-secondary: #fda4af;
+  --text-muted: #f43f5e;
+  --dock-bg: #15050b;
+  --dock-border: rgba(225, 29, 72, 0.35);
+  --dock-focus-bg: #1c060e;
+  --dock-focus-border: #ff003c;
+  --dock-focus-shadow: 0 0 25px rgba(255, 0, 60, 0.35);
+  --code-header-bg: #1a050f;
+  --code-body-bg: #0a0206;
+  --user-bubble-bg: #2d0813;
+  --user-bubble-text: #ffe4e6;
+  --ai-text: #fff1f2;
+  --accent-color: #ff003c;
+  --accent-hover: #e11d48;
+  --accent-rgb: 255, 0, 60;
+  --scrollbar-thumb: rgba(225, 29, 72, 0.4);
+  --thinking-bg: #1a050f;
+  --thinking-border: #4a071a;
+  --thinking-text: #fca5a5;
+  --badge-glow: rgba(255, 0, 60, 0.3);
+  --theme-banner: radial-gradient(circle at 50% -20%, rgba(225, 29, 72, 0.15), transparent 70%);
+}
+
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  color: #0d0d0d;
-  background-color: #ffffff;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
   margin: 0;
   padding: 0;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
-/* Custom focus styles */
-*:focus-visible {
-  outline: 2px solid rgba(0, 0, 0, 0.18);
-  outline-offset: 1px;
-}
+/* ========================================================================= */
+/* SCROLLBARS                                                                */
+/* ========================================================================= */
 
-/* Sleek Scrollbars */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -33,12 +128,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--scrollbar-thumb);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.22);
+  filter: brightness(1.2);
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -49,25 +144,28 @@ body {
   scrollbar-width: none;
 }
 
-/* ChatGPT Input Dock */
+/* ========================================================================= */
+/* INPUT DOCK                                                                */
+/* ========================================================================= */
+
 .chatgpt-input-dock {
-  background-color: #f4f4f4;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background-color: var(--dock-bg);
+  border: 1px solid var(--dock-border);
   border-radius: 26px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chatgpt-input-dock:focus-within {
-  background-color: #ffffff;
-  border-color: rgba(0, 0, 0, 0.22);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.07);
+  background-color: var(--dock-focus-bg);
+  border-color: var(--dock-focus-border);
+  box-shadow: var(--dock-focus-shadow);
 }
 
 /* Suggestion cards */
 .chatgpt-card {
-  background-color: #ffffff;
-  border: 1px solid #e5e7eb;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
   border-radius: 18px;
   padding: 16px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -76,44 +174,142 @@ body {
 }
 
 .chatgpt-card:hover {
-  background-color: #fafafa;
-  border-color: #d4d4d8;
+  border-color: var(--border-strong);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+.theme-devil .chatgpt-card:hover {
+  box-shadow: 0 0 20px rgba(255, 0, 60, 0.2);
 }
 
 /* User message bubble */
 .chatgpt-user-bubble {
-  background-color: #f4f4f4;
-  color: #0d0d0d;
+  background-color: var(--user-bubble-bg);
+  color: var(--user-bubble-text);
   border-radius: 22px;
   padding: 12px 18px;
-  max-width: 80%;
+  max-width: 82%;
   font-size: 0.95rem;
   line-height: 1.55;
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 /* Assistant message typography */
 .chatgpt-ai-message {
-  color: #0d0d0d;
+  color: var(--ai-text);
   font-size: 0.95rem;
   line-height: 1.68;
 }
 
 /* Token counter badge glow */
 .token-badge {
-  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-  border: 1px solid rgba(16, 185, 129, 0.25);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.08);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 8px var(--badge-glow);
   transition: all 0.2s ease;
 }
 
 .token-badge:hover {
-  background: linear-gradient(135deg, #dcfce7 0%, #d1fae5 100%);
-  border-color: rgba(16, 185, 129, 0.4);
+  border-color: var(--accent-color);
   transform: translateY(-1px);
+}
+
+/* ========================================================================= */
+/* THINKING PROCESS BOX (DeepSeek / o1 Style)                                 */
+/* ========================================================================= */
+
+.thinking-container {
+  background: var(--thinking-bg);
+  border: 1px solid var(--thinking-border);
+  border-radius: 14px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.83rem;
+  font-weight: 500;
+  color: var(--thinking-text);
+  transition: background 0.15s ease;
+}
+
+.thinking-header:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.theme-dark .thinking-header:hover,
+.theme-devil .thinking-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.thinking-body {
+  padding: 10px 14px;
+  border-top: 1px dashed var(--thinking-border);
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: var(--thinking-text);
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+/* Pulsing Brain Animation */
+@keyframes brainPulse {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 2px currentColor); }
+  50% { transform: scale(1.15); filter: drop-shadow(0 0 6px currentColor); }
+}
+
+.brain-pulse {
+  animation: brainPulse 1.8s infinite ease-in-out;
+}
+
+/* ========================================================================= */
+/* CANVAS PANEL (Interactive Code Artifact & File Viewer)                    */
+/* ========================================================================= */
+
+.canvas-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-subtle);
+  height: 100%;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  transition: width 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: 20;
+}
+
+.canvas-editor-area {
+  flex: 1;
+  background: var(--code-body-bg);
+  color: #e5e7eb;
+  font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow: auto;
+  padding: 16px;
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* Devil Theme Special Effects */
+.theme-devil .devil-neon {
+  border-color: #ff003c !important;
+  box-shadow: 0 0 16px rgba(255, 0, 60, 0.4) !important;
+}
+
+.theme-devil .devil-glow-text {
+  text-shadow: 0 0 12px rgba(255, 0, 60, 0.7);
 }
 
 /* Code styling */
@@ -128,7 +324,7 @@ code, pre {
 }
 
 .animate-chat-in {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes scaleIn {
@@ -137,7 +333,7 @@ code, pre {
 }
 
 .animate-scale-in {
-  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: scaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Typing cursor dot */
@@ -150,7 +346,7 @@ code, pre {
   display: inline-block;
   width: 8px;
   height: 8px;
-  background-color: #10b981;
+  background-color: var(--accent-color);
   border-radius: 50%;
   vertical-align: middle;
   margin-left: 6px;
@@ -164,7 +360,7 @@ code, pre {
 }
 
 .shimmer-line {
-  background: linear-gradient(90deg, #f0f0f0 0%, #e0e0e0 50%, #f0f0f0 100%);
+  background: linear-gradient(90deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.05) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }

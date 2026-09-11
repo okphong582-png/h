@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import {
   Sparkles, Send, Square, Copy, Check, RotateCcw, Volume2, VolumeX,
-  Settings, Plus, Trash2, ChevronDown, Zap, RefreshCw, Columns, X,
-  MessageSquare, AlertCircle, CheckCircle2, Sliders
+  Settings, Plus, Trash2, ChevronDown, ChevronUp, Zap, RefreshCw,
+  Folder, FolderCheck, Download, Code2, Brain, Flame, Sun, Moon,
+  X, MessageSquare, CheckCircle2, Sliders, ExternalLink, Save
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+type ThemeMode = 'light' | 'dark' | 'devil';
+
 interface Message {
   id: string;
   type: 'user' | 'ai';
@@ -14,6 +17,8 @@ interface Message {
   timestamp: string;
   isGenerating?: boolean;
   isError?: boolean;
+  thinkingTime?: number;
+  thinkingText?: string;
 }
 
 interface ChatSession {
@@ -32,9 +37,58 @@ interface LLMModel {
   isCloud?: boolean;
 }
 
+interface CanvasData {
+  title: string;
+  code: string;
+  lang: string;
+  filename: string;
+}
+
 const SERVER_URL = window.location.origin;
 const INITIAL_TOKENS = 1_000_000;
 const TOKENS_PER_MESSAGE = 1_000;
+
+// Helper to deduce default filename from language
+function deduceFilename(lang: string): string {
+  const l = (lang || '').toLowerCase().trim();
+  switch (l) {
+    case 'html': return 'index.html';
+    case 'css': return 'styles.css';
+    case 'js':
+    case 'javascript': return 'script.js';
+    case 'ts':
+    case 'typescript': return 'index.ts';
+    case 'jsx': return 'App.jsx';
+    case 'tsx': return 'App.tsx';
+    case 'py':
+    case 'python': return 'main.py';
+    case 'json': return 'data.json';
+    case 'sh':
+    case 'bash': return 'run.sh';
+    case 'sql': return 'schema.sql';
+    case 'c': return 'main.c';
+    case 'cpp': return 'main.cpp';
+    case 'java': return 'Main.java';
+    case 'rs':
+    case 'rust': return 'main.rs';
+    case 'go': return 'main.go';
+    case 'php': return 'index.php';
+    default: return `code.${l || 'txt'}`;
+  }
+}
+
+// Download file directly
+function downloadCodeFile(filename: string, content: string) {
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 // ─── Token Details Modal ──────────────────────────────────────────────────────
 const TokenModal = ({
@@ -53,48 +107,48 @@ const TokenModal = ({
   const pct = Math.max(0, Math.min(100, (tokensLeft / INITIAL_TOKENS) * 100));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-chat-in">
-      <div className="bg-white border border-gray-200 rounded-3xl shadow-2xl max-w-md w-full p-6 relative animate-scale-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-chat-in">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-3xl shadow-2xl max-w-md w-full p-6 relative animate-scale-in text-[var(--text-primary)]">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+          className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
         >
           <X size={18} />
         </button>
 
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center shadow-inner">
+          <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center shadow-inner">
             <Zap size={20} className="fill-emerald-500" />
           </div>
           <div>
-            <h3 className="font-bold text-lg text-gray-900">Quản Lý Token Máy</h3>
-            <p className="text-xs text-gray-500">Hạn mức máy: 1,000,000 tokens (1M)</p>
+            <h3 className="font-bold text-lg">Quản Lý Token HoangHaGPT</h3>
+            <p className="text-xs text-[var(--text-muted)]">Hạn mức máy: 1,000,000 tokens (1M)</p>
           </div>
         </div>
 
-        <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 mb-5">
+        <div className="bg-[var(--bg-surface)] rounded-2xl p-4 border border-[var(--border-subtle)] mb-5">
           <div className="flex items-baseline justify-between mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Còn lại</span>
-            <span className="text-2xl font-extrabold text-emerald-600">
-              {tokensLeft.toLocaleString()} <span className="text-xs font-medium text-gray-400">/ 1,000,000</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Còn lại</span>
+            <span className="text-2xl font-extrabold text-emerald-500">
+              {tokensLeft.toLocaleString()} <span className="text-xs font-medium text-[var(--text-muted)]">/ 1,000,000</span>
             </span>
           </div>
 
-          <div className="w-full bg-gray-200 h-2.5 rounded-full overflow-hidden mb-3">
+          <div className="w-full bg-[var(--border-subtle)] h-2.5 rounded-full overflow-hidden mb-3">
             <div
               className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
               style={{ width: `${pct}%` }}
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-gray-200/60 text-gray-600">
+          <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-[var(--border-subtle)] text-[var(--text-secondary)]">
             <div>
-              <span className="text-gray-400">Đã dùng: </span>
-              <span className="font-semibold text-gray-800">{used.toLocaleString()}</span>
+              <span className="text-[var(--text-muted)]">Đã dùng: </span>
+              <span className="font-semibold">{used.toLocaleString()}</span>
             </div>
             <div className="text-right">
-              <span className="text-gray-400">Tiêu thụ: </span>
-              <span className="font-semibold text-gray-800">1,000 / tin</span>
+              <span className="text-[var(--text-muted)]">Tiêu thụ: </span>
+              <span className="font-semibold">1,000 / tin</span>
             </div>
           </div>
         </div>
@@ -105,18 +159,14 @@ const TokenModal = ({
               onRefill();
               onClose();
             }}
-            className="w-full py-3 bg-black hover:bg-gray-800 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+            className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
           >
             <RefreshCw size={16} />
-            <span>Nạp Lại 1,000,000 Tokens (Miễn Phí)</span>
+            <span>Nạp Đầy Lại 1,000,000 Token (Miễn Phí)</span>
           </button>
-
-          <button
-            onClick={onClose}
-            className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-medium transition-colors"
-          >
-            Đóng
-          </button>
+          <p className="text-center text-[11px] text-[var(--text-muted)]">
+            Mỗi thiết bị được cấp 1 triệu token độc lập. Bạn có thể nạp lại bất cứ lúc nào!
+          </p>
         </div>
       </div>
     </div>
@@ -127,138 +177,326 @@ const TokenModal = ({
 const SettingsModal = ({
   isOpen,
   onClose,
+  models,
   activeModel,
-  onModelChange,
-  models
+  onSelectModel,
+  theme,
+  onSelectTheme
 }: {
   isOpen: boolean;
   onClose: () => void;
-  activeModel: string;
-  onModelChange: (m: string) => void;
   models: LLMModel[];
+  activeModel: string;
+  onSelectModel: (id: string) => void;
+  theme: ThemeMode;
+  onSelectTheme: (t: ThemeMode) => void;
 }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-chat-in">
-      <div className="bg-white border border-gray-200 rounded-3xl shadow-2xl max-w-lg w-full p-6 relative animate-scale-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-chat-in">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-3xl shadow-2xl max-w-lg w-full p-6 relative animate-scale-in text-[var(--text-primary)]">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+          className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-[var(--bg-surface)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
         >
           <X size={18} />
         </button>
 
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-2xl bg-gray-100 text-gray-700 flex items-center justify-center">
-            <Sliders size={20} />
-          </div>
-          <div>
-            <h3 className="font-bold text-lg text-gray-900">Cài Đặt Hệ Thống</h3>
-            <p className="text-xs text-gray-500">Tùy chỉnh mô hình AI & phong cách phản hồi</p>
-          </div>
+        <div className="flex items-center gap-2.5 mb-5">
+          <Sliders size={20} className="text-[var(--text-primary)]" />
+          <h3 className="font-bold text-lg">Cài Đặt HoangHaGPT</h3>
         </div>
 
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto no-scrollbar pr-1">
+        <div className="space-y-5">
+          {/* Theme Selector */}
           <div>
-            <label className="text-xs font-semibold text-gray-600 uppercase tracking-wider block mb-2">
-              Mô Hình AI Đang Dùng
+            <label className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] block mb-2">
+              Giao Diện (Theme)
             </label>
-            <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => onSelectTheme('light')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  theme === 'light'
+                    ? 'border-gray-900 bg-white text-gray-950 shadow-sm ring-2 ring-gray-900/10'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]'
+                }`}
+              >
+                <Sun size={15} />
+                <span>Trắng</span>
+              </button>
+
+              <button
+                onClick={() => onSelectTheme('dark')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  theme === 'dark'
+                    ? 'border-blue-500 bg-blue-950/40 text-blue-300 ring-2 ring-blue-500/20'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]'
+                }`}
+              >
+                <Moon size={15} />
+                <span>Đen</span>
+              </button>
+
+              <button
+                onClick={() => onSelectTheme('devil')}
+                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  theme === 'devil'
+                    ? 'border-red-600 bg-red-950/60 text-red-300 shadow-[0_0_15px_rgba(255,0,60,0.4)] ring-2 ring-red-600/40'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--border-subtle)]'
+                }`}
+              >
+                <Flame size={15} className="text-red-500" />
+                <span>Ác Quỷ</span>
+              </button>
+            </div>
+          </div>
+
+          {/* AI Model Selection */}
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] block mb-2">
+              Chọn Mô Hình AI
+            </label>
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
               {models.map(m => (
                 <div
                   key={m.id}
-                  onClick={() => onModelChange(m.id)}
-                  className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
+                  onClick={() => onSelectModel(m.id)}
+                  className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
                     activeModel === m.id
-                      ? 'border-black bg-gray-50/80 shadow-sm'
-                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50/40'
+                      ? 'border-[var(--accent-color)] bg-[var(--bg-surface)] shadow-xs font-medium'
+                      : 'border-[var(--border-subtle)] hover:bg-[var(--bg-surface)] opacity-80 hover:opacity-100'
                   }`}
                 >
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm font-semibold text-gray-900">{m.name}</p>
+                      <span className="text-xs font-bold">{m.name}</span>
                       {m.isCloud && (
-                        <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-md font-medium border border-blue-100">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-500">
                           Cloud
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">{m.description}</p>
+                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{m.description}</p>
                   </div>
-                  {activeModel === m.id && <CheckCircle2 size={18} className="text-black ml-3 flex-shrink-0" />}
+                  {activeModel === m.id && (
+                    <CheckCircle2 size={16} className="text-[var(--accent-color)] flex-shrink-0 ml-2" />
+                  )}
                 </div>
               ))}
             </div>
           </div>
-        </div>
 
-        <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 bg-black hover:bg-gray-800 text-white rounded-xl text-sm font-medium transition-colors"
-          >
-            Hoàn tất
-          </button>
+          <div className="pt-2 border-t border-[var(--border-subtle)] text-[11px] text-[var(--text-muted)] flex justify-between items-center">
+            <span>HoangHaGPT v2.5 • Uncensored & Fast</span>
+            <button
+              onClick={onClose}
+              className="px-4 py-1.5 rounded-lg bg-[var(--text-primary)] text-[var(--bg-primary)] font-medium hover:opacity-90 transition-opacity"
+            >
+              Đóng
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 };
 
-// ─── ChatGPT Top Navigation Bar ────────────────────────────────────────────────
-const ChatGPTHeader = ({
-  activeModel,
-  onModelChange,
-  models,
-  tokensLeft,
-  onOpenTokenModal,
-  onNewChat,
-  onToggleSidebar,
-  sidebarOpen,
-  onOpenSettings
+// ─── Canvas Side Panel ────────────────────────────────────────────────────────
+const CanvasPanel = ({
+  data,
+  isOpen,
+  onClose,
+  onSaveToFolder,
+  folderName
 }: {
-  activeModel: string;
-  onModelChange: (m: string) => void;
-  models: LLMModel[];
-  tokensLeft: number;
-  onOpenTokenModal: () => void;
-  onNewChat: () => void;
-  onToggleSidebar: () => void;
-  sidebarOpen: boolean;
-  onOpenSettings: () => void;
+  data: CanvasData | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSaveToFolder: (filename: string, code: string) => void;
+  folderName: string | null;
 }) => {
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const currentModel = models.find(m => m.id === activeModel) || { name: 'WormGPT 4o (Llama 3.3)' };
+  const [currentCode, setCurrentCode] = useState(data?.code || '');
+  const [filename, setFilename] = useState(data?.filename || 'code.txt');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (data) {
+      setCurrentCode(data.code);
+      setFilename(data.filename);
+    }
+  }, [data]);
+
+  if (!isOpen || !data) return null;
+
+  const lines = currentCode.split('\n');
+  const lineCount = lines.length;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(currentCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = () => {
+    downloadCodeFile(filename, currentCode);
+  };
 
   return (
-    <header className="sticky top-0 left-0 right-0 z-30 flex items-center justify-between px-3 md:px-5 h-14 bg-white/95 backdrop-blur border-b border-gray-200/80 transition-colors">
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onToggleSidebar}
-          title={sidebarOpen ? 'Ẩn thanh bên' : 'Hiện thanh bên'}
-          className="p-2 rounded-xl hover:bg-gray-100 text-gray-700 transition-colors cursor-pointer"
-        >
-          <Columns size={18} />
-        </button>
+    <div className="w-full md:w-[48%] lg:w-[45%] h-full flex flex-col bg-[var(--bg-card)] border-l border-[var(--border-subtle)] shadow-2xl relative z-40 animate-chat-in">
+      {/* Canvas Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]">
+        <div className="flex items-center gap-2 overflow-hidden flex-1 mr-2">
+          <div className="w-7 h-7 rounded-lg bg-[var(--accent-color)] text-white flex items-center justify-center flex-shrink-0">
+            <Code2 size={15} />
+          </div>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <input
+              type="text"
+              value={filename}
+              onChange={e => setFilename(e.target.value)}
+              title="Nhấn để đổi tên file"
+              className="bg-transparent font-mono text-xs font-bold text-[var(--text-primary)] border border-transparent hover:border-[var(--border-strong)] focus:border-[var(--accent-color)] rounded px-1.5 py-0.5 outline-none transition-colors max-w-[180px]"
+            />
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold bg-[var(--border-subtle)] text-[var(--text-secondary)] flex-shrink-0">
+              {data.lang || 'code'}
+            </span>
+            <span className="text-[10px] text-[var(--text-muted)] font-mono hidden sm:inline flex-shrink-0">
+              {lineCount} dòng
+            </span>
+          </div>
+        </div>
 
-        {/* Model Selector Dropdown */}
+        {/* Header Action Buttons */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={handleCopy}
+            title="Sao chép toàn bộ code"
+            className="p-1.5 rounded-lg hover:bg-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 text-xs cursor-pointer"
+          >
+            {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+            <span className="hidden sm:inline">{copied ? 'Đã sao chép' : 'Sao chép'}</span>
+          </button>
+
+          <button
+            onClick={handleDownload}
+            title="Tải tệp về máy tính"
+            className="p-1.5 rounded-lg hover:bg-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 text-xs cursor-pointer"
+          >
+            <Download size={14} />
+            <span className="hidden sm:inline">Tải về</span>
+          </button>
+
+          <button
+            onClick={() => onSaveToFolder(filename, currentCode)}
+            title={folderName ? `Lưu trực tiếp vào ${folderName}` : 'Chọn thư mục máy để lưu'}
+            className="p-1.5 rounded-lg bg-[var(--accent-color)] text-white hover:opacity-90 transition-opacity flex items-center gap-1 text-xs font-medium cursor-pointer shadow-xs"
+          >
+            <Save size={14} />
+            <span className="hidden sm:inline">{folderName ? 'Lưu vào thư mục' : 'Lưu vào máy'}</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            title="Đóng Canvas"
+            className="p-1.5 rounded-lg hover:bg-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors ml-1 cursor-pointer"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Editor / Code Body */}
+      <div className="flex-1 flex overflow-hidden bg-[#0d0d0d]">
+        {/* Line Numbers */}
+        <div className="select-none py-3 px-2 text-right text-[11px] font-mono text-gray-600 bg-[#080808] border-r border-gray-800/80 w-11 flex-shrink-0">
+          {lines.map((_, i) => (
+            <div key={i} className="leading-6">
+              {i + 1}
+            </div>
+          ))}
+        </div>
+
+        {/* Code View / Edit */}
+        <textarea
+          value={currentCode}
+          onChange={e => setCurrentCode(e.target.value)}
+          spellCheck={false}
+          className="flex-1 p-3 bg-transparent text-gray-100 font-mono text-xs leading-6 resize-none outline-none overflow-auto tab-size-2"
+        />
+      </div>
+
+      {/* Canvas Footer Status */}
+      <div className="px-4 py-2 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[11px] text-[var(--text-muted)] flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Canvas tương tác • Bạn có thể chỉnh sửa trực tiếp mã trước khi tải/lưu</span>
+        </div>
+        {folderName && (
+          <span className="text-emerald-500 font-semibold flex items-center gap-1">
+            <FolderCheck size={12} />
+            {folderName}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── ChatGPT Top Header ───────────────────────────────────────────────────────
+const ChatGPTHeader = ({
+  activeModel,
+  models,
+  onModelChange,
+  onNewChat,
+  onOpenSettings,
+  tokensLeft,
+  onOpenTokenModal,
+  theme,
+  onSelectTheme,
+  folderName,
+  onPickFolder,
+  onDisconnectFolder
+}: {
+  activeModel: string;
+  models: LLMModel[];
+  onModelChange: (id: string) => void;
+  onNewChat: () => void;
+  onOpenSettings: () => void;
+  tokensLeft: number;
+  onOpenTokenModal: () => void;
+  theme: ThemeMode;
+  onSelectTheme: (t: ThemeMode) => void;
+  folderName: string | null;
+  onPickFolder: () => void;
+  onDisconnectFolder: () => void;
+}) => {
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const currentModel = models.find(m => m.id === activeModel) || { name: 'HoangHaGPT 4o' };
+
+  return (
+    <header className="h-14 border-b border-[var(--border-subtle)] bg-[var(--bg-primary)] px-4 flex items-center justify-between flex-shrink-0 z-20">
+      <div className="flex items-center gap-2">
+        {/* Model Dropdown */}
         <div className="relative">
           <button
             onClick={() => setModelMenuOpen(!modelMenuOpen)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-gray-100 text-gray-900 text-sm font-semibold transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl hover:bg-[var(--bg-surface)] text-sm font-semibold text-[var(--text-primary)] transition-colors cursor-pointer"
           >
-            <span>{currentModel.name.replace(/\(.*\)/, '').trim() || 'WormGPT 4o'}</span>
-            <span className="text-xs text-gray-400 font-normal">v2</span>
-            <ChevronDown size={14} className="text-gray-500 mt-0.5" />
+            <span>{currentModel.name.replace(/\(.*\)/, '').trim() || 'HoangHaGPT 4o'}</span>
+            <span className="text-[10px] text-[var(--text-muted)] font-normal border border-[var(--border-subtle)] rounded px-1">
+              PRO
+            </span>
+            <ChevronDown size={14} className="text-[var(--text-muted)] mt-0.5" />
           </button>
 
           {modelMenuOpen && (
             <div
-              className="absolute left-0 top-full mt-1.5 w-72 bg-white border border-gray-200 rounded-2xl shadow-xl p-2 z-50 animate-chat-in"
+              className="absolute left-0 top-full mt-1.5 w-72 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl shadow-xl p-2 z-50 animate-chat-in"
               onMouseLeave={() => setModelMenuOpen(false)}
             >
-              <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+              <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Mô hình AI
               </div>
               <div className="space-y-1">
@@ -269,15 +507,17 @@ const ChatGPTHeader = ({
                       onModelChange(m.id);
                       setModelMenuOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl transition-colors flex items-center justify-between ${
-                      activeModel === m.id ? 'bg-gray-100 text-gray-900 font-medium' : 'hover:bg-gray-50 text-gray-700'
+                    className={`w-full text-left p-2.5 rounded-xl transition-colors flex items-center justify-between cursor-pointer ${
+                      activeModel === m.id
+                        ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-medium'
+                        : 'hover:bg-[var(--bg-surface)] text-[var(--text-secondary)]'
                     }`}
                   >
                     <div>
                       <p className="text-xs font-semibold">{m.name}</p>
-                      <p className="text-[10px] text-gray-400 line-clamp-1">{m.description}</p>
+                      <p className="text-[10px] text-[var(--text-muted)] line-clamp-1">{m.description}</p>
                     </div>
-                    {activeModel === m.id && <Check size={14} className="text-black ml-2 flex-shrink-0" />}
+                    {activeModel === m.id && <Check size={14} className="text-[var(--accent-color)] ml-2 flex-shrink-0" />}
                   </button>
                 ))}
               </div>
@@ -287,21 +527,76 @@ const ChatGPTHeader = ({
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Local Folder Sync Button */}
+        {folderName ? (
+          <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 px-2.5 py-1 rounded-full text-xs font-semibold">
+            <FolderCheck size={13} className="text-emerald-500" />
+            <span className="max-w-[120px] truncate" title={folderName}>{folderName}</span>
+            <button
+              onClick={onDisconnectFolder}
+              title="Ngắt kết nối thư mục này"
+              className="ml-1 hover:text-red-500 cursor-pointer"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={onPickFolder}
+            title="Chọn thư mục trên máy tính để lưu code trực tiếp"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-[var(--border-subtle)] hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] text-xs font-medium transition-colors cursor-pointer"
+          >
+            <Folder size={14} />
+            <span className="hidden sm:inline">Chọn thư mục máy</span>
+          </button>
+        )}
+
+        {/* Quick Theme Switcher */}
+        <div className="flex items-center bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-0.5">
+          <button
+            onClick={() => onSelectTheme('light')}
+            title="Giao diện Trắng"
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              theme === 'light' ? 'bg-white shadow-xs text-gray-900' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Sun size={14} />
+          </button>
+          <button
+            onClick={() => onSelectTheme('dark')}
+            title="Giao diện Đen"
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              theme === 'dark' ? 'bg-[#2a2a2a] shadow-xs text-blue-400' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            <Moon size={14} />
+          </button>
+          <button
+            onClick={() => onSelectTheme('devil')}
+            title="Giao diện Đỏ Đen Ác Quỷ"
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+              theme === 'devil' ? 'bg-red-950/80 shadow-[0_0_10px_rgba(255,0,60,0.5)] text-red-500' : 'text-[var(--text-muted)] hover:text-red-400'
+            }`}
+          >
+            <Flame size={14} />
+          </button>
+        </div>
+
         {/* Token Badge */}
         <button
           onClick={onOpenTokenModal}
           title="Xem chi tiết hoặc nạp lại token"
-          className="token-badge flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-800 cursor-pointer"
+          className="token-badge flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-600 cursor-pointer"
         >
-          <Zap size={14} className="text-emerald-600 fill-emerald-500" />
+          <Zap size={14} className="fill-emerald-500" />
           <span>{tokensLeft.toLocaleString()}</span>
-          <span className="text-[10px] text-emerald-600/80 font-normal hidden sm:inline">Tokens</span>
+          <span className="text-[10px] opacity-75 font-normal hidden sm:inline">Tokens</span>
         </button>
 
         <button
           onClick={onNewChat}
           title="Đoạn chat mới (Ctrl+N)"
-          className="p-2 rounded-xl hover:bg-gray-100 text-gray-700 transition-colors cursor-pointer"
+          className="p-2 rounded-xl hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
         >
           <Plus size={18} />
         </button>
@@ -309,7 +604,7 @@ const ChatGPTHeader = ({
         <button
           onClick={onOpenSettings}
           title="Cài đặt"
-          className="p-2 rounded-xl hover:bg-gray-100 text-gray-700 transition-colors cursor-pointer"
+          className="p-2 rounded-xl hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
         >
           <Settings size={18} />
         </button>
@@ -345,20 +640,20 @@ const ChatGPTSidebar = ({
   if (!isOpen) return null;
 
   return (
-    <aside className="w-[260px] flex-shrink-0 h-screen bg-[#f9f9f9] border-r border-gray-200/80 flex flex-col justify-between p-3 select-none z-30 transition-all">
+    <aside className="w-[260px] flex-shrink-0 h-screen bg-[var(--bg-secondary)] border-r border-[var(--border-subtle)] flex flex-col justify-between p-3 select-none z-30 transition-all">
       {/* Top Section */}
       <div className="flex flex-col gap-2 overflow-hidden flex-1">
         {/* Header */}
         <div className="flex items-center justify-between px-2 pt-1 pb-2">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-xl bg-black flex items-center justify-center text-white shadow-sm">
+            <div className="w-7 h-7 rounded-xl bg-[var(--text-primary)] flex items-center justify-center text-[var(--bg-primary)] shadow-sm">
               <Sparkles size={14} />
             </div>
-            <span className="font-bold text-sm tracking-tight text-gray-900">WormGPT</span>
+            <span className="font-bold text-sm tracking-tight text-[var(--text-primary)]">HoangHaGPT</span>
           </div>
           <button
             onClick={onClose}
-            className="md:hidden p-1.5 rounded-lg hover:bg-gray-200 text-gray-500"
+            className="md:hidden p-1.5 rounded-lg hover:bg-[var(--border-subtle)] text-[var(--text-muted)]"
             title="Đóng sidebar"
           >
             <X size={16} />
@@ -368,22 +663,22 @@ const ChatGPTSidebar = ({
         {/* New Chat Button */}
         <button
           onClick={onNewChat}
-          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl bg-white border border-gray-200/80 hover:bg-gray-50 text-gray-800 text-xs font-semibold shadow-sm transition-all cursor-pointer"
+          className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border-strong)] text-[var(--text-primary)] text-xs font-semibold shadow-xs transition-all cursor-pointer"
         >
           <span className="flex items-center gap-2">
             <Plus size={15} />
             Cuộc trò chuyện mới
           </span>
-          <span className="text-[10px] text-gray-400 border border-gray-200 rounded px-1.5 py-0.5">Ctrl+N</span>
+          <span className="text-[10px] text-[var(--text-muted)] border border-[var(--border-subtle)] rounded px-1.5 py-0.5">Ctrl+N</span>
         </button>
 
         {/* Sessions list */}
         <div className="mt-3 overflow-y-auto no-scrollbar space-y-1 flex-1">
-          <p className="px-2 text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+          <p className="px-2 text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">
             Gần đây
           </p>
           {sessions.length === 0 ? (
-            <p className="px-2 py-3 text-xs text-gray-400 italic">Chưa có lịch sử trò chuyện</p>
+            <p className="px-2 py-3 text-xs text-[var(--text-muted)] italic">Chưa có lịch sử trò chuyện</p>
           ) : (
             sessions.map(s => (
               <div
@@ -391,18 +686,18 @@ const ChatGPTSidebar = ({
                 onClick={() => onSelectSession(s.id)}
                 className={`group flex items-center justify-between px-3 py-2.5 rounded-xl text-xs cursor-pointer transition-colors ${
                   activeSessionId === s.id
-                    ? 'bg-gray-200/80 text-gray-900 font-semibold shadow-xs'
-                    : 'hover:bg-gray-200/50 text-gray-700'
+                    ? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-semibold shadow-xs border border-[var(--border-subtle)]'
+                    : 'hover:bg-[var(--bg-surface)] text-[var(--text-secondary)]'
                 }`}
               >
                 <div className="flex items-center gap-2 truncate">
-                  <MessageSquare size={13} className="text-gray-400 flex-shrink-0" />
+                  <MessageSquare size={13} className="text-[var(--text-muted)] flex-shrink-0" />
                   <span className="truncate">{s.title || 'Đoạn chat mới'}</span>
                 </div>
                 <button
                   onClick={(e) => onDeleteSession(s.id, e)}
                   title="Xóa đoạn chat"
-                  className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 transition-opacity p-0.5 ml-1 flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-500 transition-opacity p-0.5 ml-1 flex-shrink-0"
                 >
                   <Trash2 size={13} />
                 </button>
@@ -413,141 +708,76 @@ const ChatGPTSidebar = ({
       </div>
 
       {/* Bottom Section: Token Card & Settings */}
-      <div className="border-t border-gray-200/80 pt-3 space-y-2">
+      <div className="border-t border-[var(--border-subtle)] pt-3 space-y-2">
         {/* Token Card */}
         <div
           onClick={onOpenTokenModal}
-          className="p-3 bg-white border border-gray-200/80 rounded-2xl cursor-pointer hover:border-emerald-300 transition-all shadow-xs group"
+          className="p-3 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-2xl cursor-pointer hover:border-emerald-500/40 transition-all shadow-xs group"
         >
           <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
+            <span className="text-[11px] font-semibold text-[var(--text-secondary)] flex items-center gap-1">
               <Zap size={12} className="text-emerald-500 fill-emerald-500" />
               Token Thiết Bị
             </span>
-            <span className="text-xs font-bold text-emerald-600">
+            <span className="text-xs font-bold text-emerald-500">
               {tokensLeft.toLocaleString()}
             </span>
           </div>
-          <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden mb-1.5">
+          <div className="w-full bg-[var(--border-subtle)] h-1.5 rounded-full overflow-hidden mb-1.5">
             <div
               className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
               style={{ width: `${Math.max(0, Math.min(100, (tokensLeft / INITIAL_TOKENS) * 100))}%` }}
             />
           </div>
-          <p className="text-[10px] text-gray-400 group-hover:text-emerald-600 transition-colors">
-            1,000 tokens / tin nhắn • Bấm để nạp lại
+          <p className="text-[10px] text-[var(--text-muted)] group-hover:text-emerald-500 transition-colors">
+            1,000 tokens / tin • Bấm để nạp lại
           </p>
         </div>
 
         <button
           onClick={onOpenSettings}
-          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-200/70 text-gray-700 text-xs font-medium transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] text-xs font-medium transition-colors cursor-pointer"
         >
-          <Settings size={15} className="text-gray-500" />
-          <span>Cài đặt & Mô hình</span>
+          <Settings size={15} className="text-[var(--text-muted)]" />
+          <span>Cài đặt & Giao diện</span>
         </button>
-
-        <div className="flex items-center justify-between px-3 py-1">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center text-[10px] font-bold text-gray-700">
-              U
-            </div>
-            <span className="text-xs text-gray-700 font-medium">Người dùng</span>
-          </div>
-          <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-medium">
-            1M Quota
-          </span>
-        </div>
       </div>
     </aside>
   );
 };
 
-// ─── ChatGPT Hero (Empty State) ───────────────────────────────────────────────
-const ChatGPTHero = ({ onPromptSelect }: { onPromptSelect: (p: string) => void }) => {
-  const cards = [
-    {
-      title: 'Lập trình & Viết code',
-      desc: 'Tạo ứng dụng to-do list hiện đại với HTML, CSS và JavaScript',
-      prompt: 'Hãy tạo một ứng dụng to-do list hoàn chỉnh bằng HTML, CSS đẹp mắt và JavaScript thuần có tính năng lưu vào LocalStorage.',
-      icon: '💻'
-    },
-    {
-      title: 'Tìm lỗi & Tối ưu hóa',
-      desc: 'Phân tích và tối ưu hóa hiệu năng, bảo mật cho đoạn code',
-      prompt: 'Làm thế nào để tối ưu hóa hiệu năng một ứng dụng web React và giảm thời gian tải trang dưới 1 giây?',
-      icon: '🔍'
-    },
-    {
-      title: 'Kiến trúc & Hệ thống',
-      desc: 'Thiết kế kiến trúc hệ thống fullstack và cơ sở dữ liệu',
-      prompt: 'Hãy thiết kế kiến trúc hệ thống cho một ứng dụng chat thời gian thực hỗ trợ 100,000 người dùng trực tuyến.',
-      icon: '💡'
-    },
-    {
-      title: 'Giải thích & Phân tích',
-      desc: 'Giải thích khái niệm kỹ thuật phức tạp theo cách dễ hiểu nhất',
-      prompt: 'Hãy giải thích cơ chế hoạt động của Transformers và Attention Mechanism trong mô hình ngôn ngữ lớn (LLM) một cách trực quan.',
-      icon: '✍️'
-    }
-  ];
-
+// ─── ChatGPT User Message ─────────────────────────────────────────────────────
+const ChatGPTUserMessage = ({ content }: { content: string }) => {
   return (
-    <div className="max-w-2xl mx-auto text-center px-4 py-8 md:py-12 animate-chat-in">
-      <div className="inline-flex items-center justify-center w-12 h-12 mb-4 rounded-2xl bg-black text-white shadow-md">
-        <Sparkles size={24} />
-      </div>
-      <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-        Hôm nay tôi có thể giúp gì cho bạn?
-      </h1>
-      <p className="text-xs md:text-sm text-gray-500 mb-8">
-        WormGPT không giới hạn • Trợ lý lập trình siêu tốc độ
-      </p>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-        {cards.map((c, i) => (
-          <div
-            key={i}
-            onClick={() => onPromptSelect(c.prompt)}
-            className="chatgpt-card group"
-          >
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-base">{c.icon}</span>
-              <h3 className="text-xs font-semibold text-gray-800 group-hover:text-black">
-                {c.title}
-              </h3>
-            </div>
-            <p className="text-xs text-gray-500 leading-relaxed line-clamp-2">
-              {c.desc}
-            </p>
-          </div>
-        ))}
+    <div className="flex justify-end px-4 py-2 max-w-3xl mx-auto w-full animate-chat-in">
+      <div className="chatgpt-user-bubble">
+        {content}
       </div>
     </div>
   );
 };
 
-// ─── ChatGPT User Message ─────────────────────────────────────────────────────
-const ChatGPTUserMessage = ({ message }: { message: Message }) => (
-  <div className="flex justify-end px-4 py-2 animate-chat-in">
-    <div className="chatgpt-user-bubble">
-      {message.content}
-    </div>
-  </div>
-);
-
 // ─── ChatGPT AI Message ───────────────────────────────────────────────────────
 const ChatGPTAIMessage = ({
   message,
+  isGenerating,
+  thinkingElapsed,
   onRegenerate,
-  isGenerating
+  onOpenCanvas,
+  onSaveToFolder,
+  folderName
 }: {
   message: Message;
-  onRegenerate?: () => void;
   isGenerating: boolean;
+  thinkingElapsed: number;
+  onRegenerate?: () => void;
+  onOpenCanvas: (data: CanvasData) => void;
+  onSaveToFolder: (filename: string, code: string) => void;
+  folderName: string | null;
 }) => {
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [thinkingExpanded, setThinkingExpanded] = useState(false);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -568,7 +798,18 @@ const ChatGPTAIMessage = ({
     setIsSpeaking(true);
   };
 
-  // Render markdown chunks and macOS-style code blocks
+  // Parse `<think>...</think>` tags if present
+  let displayContent = message.content;
+  let thoughtSnippet = message.thinkingText || '';
+  if (message.content.includes('<think>')) {
+    const thinkMatch = message.content.match(/<think>([\s\S]*?)<\/think>/);
+    if (thinkMatch) {
+      thoughtSnippet = thinkMatch[1].trim();
+      displayContent = message.content.replace(/<think>[\s\S]*?<\/think>/, '').trim();
+    }
+  }
+
+  // Render markdown chunks and macOS-style code blocks with Canvas integration
   const renderFormattedContent = (content: string) => {
     if (!content) return null;
     const parts = content.split(/(```[\s\S]*?```)/g);
@@ -578,27 +819,67 @@ const ChatGPTAIMessage = ({
         const match = part.match(/```(\w+)?\n?([\s\S]*?)```/);
         const lang = match?.[1] || 'code';
         const code = (match?.[2] || '').trim();
+        const filename = deduceFilename(lang);
 
         return (
-          <div key={index} className="my-3 rounded-2xl overflow-hidden border border-gray-800 bg-[#1e1e1e] text-xs shadow-md">
-            <div className="flex items-center justify-between px-4 py-2.5 bg-[#2a2a2a] text-gray-400 font-mono text-[11px]">
+          <div key={index} className="my-3.5 rounded-2xl overflow-hidden border border-gray-800 bg-[#161616] text-xs shadow-lg">
+            {/* Code Block Header */}
+            <div className="flex items-center justify-between px-4 py-2.5 bg-[#222222] text-gray-400 font-mono text-[11px] border-b border-gray-800">
               <div className="flex items-center gap-2">
                 <div className="flex gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/80" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500/80" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/90" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/90" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500/90" />
                 </div>
-                <span className="ml-2 uppercase text-[10px] font-semibold text-gray-400">{lang}</span>
+                <span className="ml-2 uppercase text-[10px] font-bold tracking-wider text-gray-300">
+                  {lang}
+                </span>
+                <span className="text-[10px] text-gray-500 hidden sm:inline">
+                  • {filename}
+                </span>
               </div>
-              <button
-                onClick={() => navigator.clipboard.writeText(code)}
-                className="hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded bg-white/5 hover:bg-white/10"
-              >
-                <Copy size={12} />
-                <span>Sao chép</span>
-              </button>
+
+              {/* Code Toolbar Buttons */}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => onOpenCanvas({ title: filename, code, lang, filename })}
+                  title="Mở bảng Canvas để xem, sửa và quản lý code"
+                  className="hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-emerald-400 font-medium cursor-pointer"
+                >
+                  <Code2 size={12} />
+                  <span>Mở Canvas</span>
+                </button>
+
+                <button
+                  onClick={() => downloadCodeFile(filename, code)}
+                  title="Tải tệp về máy tính"
+                  className="hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded bg-white/5 hover:bg-white/10 cursor-pointer"
+                >
+                  <Download size={12} />
+                  <span className="hidden sm:inline">Tải về</span>
+                </button>
+
+                <button
+                  onClick={() => onSaveToFolder(filename, code)}
+                  title={folderName ? `Lưu trực tiếp vào ${folderName}` : 'Lưu vào thư mục máy'}
+                  className="hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded bg-white/5 hover:bg-white/10 text-blue-400 cursor-pointer"
+                >
+                  <Save size={12} />
+                  <span className="hidden sm:inline">Lưu máy</span>
+                </button>
+
+                <button
+                  onClick={() => navigator.clipboard.writeText(code)}
+                  className="hover:text-white flex items-center gap-1 transition-colors px-2 py-1 rounded bg-white/5 hover:bg-white/10 cursor-pointer"
+                >
+                  <Copy size={12} />
+                  <span>Sao chép</span>
+                </button>
+              </div>
             </div>
-            <pre className="p-4 text-gray-100 font-mono overflow-x-auto leading-relaxed">
+
+            {/* Code Content */}
+            <pre className="p-4 text-gray-100 font-mono overflow-x-auto leading-relaxed tab-size-2">
               <code>{code}</code>
             </pre>
           </div>
@@ -606,7 +887,7 @@ const ChatGPTAIMessage = ({
       }
 
       return (
-        <div key={index} className="whitespace-pre-wrap leading-relaxed text-gray-900">
+        <div key={index} className="whitespace-pre-wrap leading-relaxed">
           {part}
         </div>
       );
@@ -615,29 +896,66 @@ const ChatGPTAIMessage = ({
 
   return (
     <div className="flex gap-3 px-4 py-3 max-w-3xl mx-auto w-full animate-chat-in">
-      <div className="w-7 h-7 rounded-full bg-black text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
+      <div className="w-7 h-7 rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
         <Sparkles size={14} />
       </div>
 
       <div className="flex-1 overflow-hidden">
+        {/* Thinking Accordion / Live Timer */}
+        {isGenerating && !displayContent && (
+          <div className="thinking-container animate-scale-in">
+            <div className="thinking-header">
+              <div className="flex items-center gap-2 text-emerald-500 font-semibold">
+                <Brain size={16} className="brain-pulse" />
+                <span>HoangHaGPT đang suy nghĩ ({thinkingElapsed}s)...</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {message.thinkingTime && (
+          <div className="thinking-container">
+            <div
+              onClick={() => setThinkingExpanded(!thinkingExpanded)}
+              className="thinking-header"
+            >
+              <div className="flex items-center gap-2">
+                <Brain size={15} className="text-emerald-500" />
+                <span>Đã suy nghĩ trong {message.thinkingTime} giây</span>
+              </div>
+              <div className="flex items-center gap-1 text-[11px] opacity-75">
+                <span>{thinkingExpanded ? 'Thu gọn' : 'Xem chi tiết'}</span>
+                {thinkingExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              </div>
+            </div>
+            {thinkingExpanded && (
+              <div className="thinking-body">
+                {thoughtSnippet || `Phân tích ngữ cảnh câu hỏi, lập dàn ý thuật toán, định dạng mã nguồn và tổng hợp phản hồi tối ưu.`}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI Message Typography */}
         <div className="text-[15px] leading-relaxed chatgpt-ai-message">
-          {renderFormattedContent(message.content)}
-          {isGenerating && <span className="typing-dot" />}
+          {renderFormattedContent(displayContent)}
+          {isGenerating && displayContent && <span className="typing-dot" />}
         </div>
 
+        {/* Message Action Footer */}
         {!isGenerating && message.content && (
-          <div className="flex items-center gap-1.5 mt-3 pt-2 text-gray-400">
+          <div className="flex items-center gap-1.5 mt-3 pt-1 text-[var(--text-muted)]">
             <button
               onClick={handleCopy}
-              title="Sao chép nội dung"
-              className="p-1.5 rounded-lg hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              title="Sao chép toàn bộ tin nhắn"
+              className="p-1.5 rounded-lg hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
-              {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+              {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
             </button>
             <button
               onClick={handleSpeak}
               title={isSpeaking ? 'Dừng đọc' : 'Đọc to'}
-              className="p-1.5 rounded-lg hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
             >
               {isSpeaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
             </button>
@@ -645,7 +963,7 @@ const ChatGPTAIMessage = ({
               <button
                 onClick={onRegenerate}
                 title="Tạo lại câu trả lời"
-                className="p-1.5 rounded-lg hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
               >
                 <RotateCcw size={14} />
               </button>
@@ -663,13 +981,17 @@ const ChatGPTInputDock = ({
   isGenerating,
   onStopGeneration,
   tokensLeft,
-  onOpenTokenModal
+  onOpenTokenModal,
+  folderName,
+  onPickFolder
 }: {
   onSendMessage: (msg: string) => void;
   isGenerating: boolean;
   onStopGeneration: () => void;
   tokensLeft: number;
   onOpenTokenModal: () => void;
+  folderName: string | null;
+  onPickFolder: () => void;
 }) => {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -686,6 +1008,7 @@ const ChatGPTInputDock = ({
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
+      if ((e.nativeEvent as any).isComposing) return;
       e.preventDefault();
       handleSend();
     }
@@ -699,10 +1022,10 @@ const ChatGPTInputDock = ({
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isGenerating ? 'WormGPT đang suy nghĩ...' : 'Hỏi WormGPT bất cứ điều gì... (Enter để gửi)'}
+          placeholder={isGenerating ? 'HoangHaGPT đang suy nghĩ và tạo câu trả lời...' : 'Nhắn gì đó với HoangHaGPT... (Enter để gửi, Shift+Enter xuống dòng)'}
           disabled={isGenerating}
           rows={1}
-          className="w-full bg-transparent px-3 py-1.5 text-[15px] text-gray-900 placeholder-gray-400 outline-none resize-none min-h-[44px] max-h-[160px] leading-relaxed"
+          className="w-full bg-transparent px-3 py-1.5 text-[15px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none resize-none min-h-[44px] max-h-[160px] leading-relaxed"
           onInput={e => {
             const t = e.target as HTMLTextAreaElement;
             t.style.height = 'auto';
@@ -710,15 +1033,24 @@ const ChatGPTInputDock = ({
           }}
         />
 
-        <div className="flex items-center justify-between px-2 pt-1">
-          <button
-            type="button"
-            onClick={onOpenTokenModal}
-            className="text-[11px] font-medium text-gray-400 hover:text-emerald-600 flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <Zap size={12} className="text-emerald-500 fill-emerald-500" />
-            <span>-1,000 tokens / tin ({tokensLeft.toLocaleString()} còn lại)</span>
-          </button>
+        <div className="flex items-center justify-between px-2 pt-1 border-t border-[var(--border-subtle)]/40 mt-1">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onOpenTokenModal}
+              className="text-[11px] font-medium text-[var(--text-muted)] hover:text-emerald-500 flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Zap size={12} className="text-emerald-500 fill-emerald-500" />
+              <span>-1,000 tokens/tin ({tokensLeft.toLocaleString()} còn)</span>
+            </button>
+
+            {folderName && (
+              <span className="text-[11px] text-emerald-500 font-semibold flex items-center gap-1 hidden sm:inline">
+                <FolderCheck size={12} />
+                <span>Thư mục: {folderName}</span>
+              </span>
+            )}
+          </div>
 
           <div className="flex items-center gap-1">
             {isGenerating ? (
@@ -726,7 +1058,7 @@ const ChatGPTInputDock = ({
                 type="button"
                 onClick={onStopGeneration}
                 title="Dừng tạo"
-                className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center hover:bg-gray-800 transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-[var(--text-primary)] text-[var(--bg-primary)] flex items-center justify-center hover:opacity-85 transition-opacity cursor-pointer"
               >
                 <Square size={12} fill="currentColor" />
               </button>
@@ -736,7 +1068,7 @@ const ChatGPTInputDock = ({
                 onClick={handleSend}
                 disabled={!text.trim()}
                 title="Gửi tin nhắn"
-                className="w-8 h-8 rounded-full bg-black disabled:bg-gray-200 disabled:text-gray-400 text-white flex items-center justify-center hover:bg-gray-800 transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-[var(--text-primary)] disabled:opacity-30 text-[var(--bg-primary)] flex items-center justify-center hover:opacity-85 transition-opacity cursor-pointer shadow-xs"
               >
                 <Send size={14} />
               </button>
@@ -745,36 +1077,96 @@ const ChatGPTInputDock = ({
         </div>
       </div>
 
-      <p className="text-center text-[11px] text-gray-400 mt-2 select-none">
-        WormGPT có thể mắc lỗi. Hãy kiểm tra lại các thông tin quan trọng.
+      <p className="text-center text-[11px] text-[var(--text-muted)] mt-2 select-none">
+        HoangHaGPT v2.5 • Trí tuệ nhân tạo không giới hạn • Hỗ trợ lưu code trực tiếp vào máy
       </p>
     </div>
   );
 };
 
-// ─── Main Application ─────────────────────────────────────────────────────────
-function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [tokensLeft, setTokensLeft] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('wormgpt_device_tokens');
-      if (saved) {
-        const val = parseInt(saved, 10);
-        if (!isNaN(val)) return val;
-      }
-    } catch {}
-    return INITIAL_TOKENS;
+// ─── ChatGPT Welcome / Empty State View ───────────────────────────────────────
+const ChatGPTWelcomeView = ({ onSelectPrompt }: { onSelectPrompt: (p: string) => void }) => {
+  const suggestions = [
+    {
+      title: 'Tạo ứng dụng Web hoàn chỉnh',
+      desc: 'Viết code HTML, CSS, JavaScript cho game Flappy Bird',
+      prompt: 'Hãy viết cho tôi một ứng dụng game Flappy Bird hoàn chỉnh bằng 1 file HTML duy nhất có CSS và JS đẹp mắt, có thể chơi ngay.'
+    },
+    {
+      title: 'Trò chuyện & Chém gió vui vẻ',
+      desc: 'Tâm sự, kể chuyện hài hước hoặc đặt câu hỏi đời sống',
+      prompt: 'Chào bạn! Hãy kể cho tôi một câu chuyện hài hước về cuộc sống của một lập trình viên khi sửa bug lúc 2 giờ sáng.'
+    },
+    {
+      title: 'Phân tích & Tối ưu thuật toán',
+      desc: 'Giải thích thuật toán Dijkstra và viết code Python',
+      prompt: 'Hãy giải thích trực quan thuật toán tìm đường đi ngắn nhất Dijkstra và cài đặt thuật toán đó bằng Python kèm chú thích chi tiết.'
+    },
+    {
+      title: 'Thiết kế RESTful API Backend',
+      desc: 'Xây dựng kiến trúc Node.js Express với JWT authentication',
+      prompt: 'Hãy viết mẫu mã nguồn hệ thống xác thực người dùng (Auth JWT, bcrypt, Express) cho Node.js chuẩn Clean Architecture.'
+    }
+  ];
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-3xl mx-auto w-full animate-chat-in">
+      <div className="w-14 h-14 rounded-2xl bg-[var(--text-primary)] text-[var(--bg-primary)] flex items-center justify-center shadow-lg mb-4">
+        <Sparkles size={28} />
+      </div>
+
+      <h2 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] mb-2">
+        Hôm nay HoangHaGPT có thể giúp gì cho bạn?
+      </h2>
+      <p className="text-sm text-[var(--text-muted)] max-w-md mb-8">
+        Trợ lý AI đa năng thế hệ mới: lập trình, sáng tạo, giải thuật, lưu file trực tiếp vào máy hoặc trò chuyện tự do không giới hạn.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+        {suggestions.map((s, idx) => (
+          <div
+            key={idx}
+            onClick={() => onSelectPrompt(s.prompt)}
+            className="chatgpt-card group"
+          >
+            <p className="text-xs font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-color)] transition-colors">
+              {s.title}
+            </p>
+            <p className="text-[11px] text-[var(--text-muted)] mt-1">
+              {s.desc}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─── Main App Component ───────────────────────────────────────────────────────
+export default function App() {
+  // Theme State: 'light' | 'dark' | 'devil'
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    return (localStorage.getItem('hoanghagpt_theme') as ThemeMode) || 'light';
   });
 
-  const [showTokenModal, setShowTokenModal] = useState(false);
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  // Token Quota: 1,000,000 tokens
+  const [tokensLeft, setTokensLeft] = useState<number>(() => {
+    const saved = localStorage.getItem('hoanghagpt_device_tokens') || localStorage.getItem('wormgpt_device_tokens');
+    return saved ? parseInt(saved, 10) : INITIAL_TOKENS;
+  });
 
+  // Sessions State
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    try {
-      const saved = localStorage.getItem('wormgpt_chat_sessions');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [{ id: 'default', title: 'Đoạn chat mới', messages: [], updatedAt: Date.now() }];
+    const saved = localStorage.getItem('hoanghagpt_chat_sessions') || localStorage.getItem('wormgpt_chat_sessions');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [{
+      id: 'default',
+      title: 'Đoạn chat mới',
+      messages: [],
+      updatedAt: Date.now()
+    }];
   });
   const [activeSessionId, setActiveSessionId] = useState<string>('default');
 
@@ -784,28 +1176,53 @@ function App() {
   const messages = currentSession.messages;
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const isSendingRef = useRef(false);
+
+  // Models State
   const [models, setModels] = useState<LLMModel[]>([
-    { id: 'meta-llama/llama-3.3-70b-instruct', name: 'WormGPT 4o (Llama 3.3 70B)', provider: 'openrouter', status: 'connected', description: 'Mô hình lập trình mạnh mẽ nhất, nhanh & chuẩn xác', isCloud: true },
+    { id: 'meta-llama/llama-3.3-70b-instruct', name: 'HoangHaGPT 4o (Llama 3.3 70B)', provider: 'openrouter', status: 'connected', description: 'Mô hình lập trình mạnh mẽ nhất, nhanh & chuẩn xác', isCloud: true },
     { id: 'gryphe/mythomax-l2-13b', name: 'MythoMax 13B (Uncensored)', provider: 'openrouter', status: 'connected', description: 'Không kiểm duyệt, tự do tối đa mọi chủ đề', isCloud: true },
     { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3 (Coding Beast)', provider: 'openrouter', status: 'connected', description: 'Chuyên sâu thuật toán và code phức tạp', isCloud: true },
     { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini (Cloud)', provider: 'openrouter', status: 'connected', description: 'Nhanh nhẹn, tối ưu', isCloud: true }
   ]);
   const [activeModel, setActiveModel] = useState('meta-llama/llama-3.3-70b-instruct');
 
+  // Modals & Canvas State
+  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Canvas Side Panel
+  const [canvasData, setCanvasData] = useState<CanvasData | null>(null);
+  const [isCanvasOpen, setIsCanvasOpen] = useState(false);
+
+  // Web File System Access API
+  const [directoryHandle, setDirectoryHandle] = useState<any | null>(null);
+  const [dirName, setDirName] = useState<string | null>(null);
+
+  // Thinking live timer
+  const [thinkingElapsed, setThinkingElapsed] = useState(0);
+  const thinkingTimerRef = useRef<any>(null);
+
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Apply theme to document
+  useEffect(() => {
+    localStorage.setItem('hoanghagpt_theme', theme);
+  }, [theme]);
 
   // Sync tokens to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('wormgpt_device_tokens', tokensLeft.toString());
+      localStorage.setItem('hoanghagpt_device_tokens', tokensLeft.toString());
     } catch {}
   }, [tokensLeft]);
 
   // Sync sessions to localStorage
   useEffect(() => {
     try {
-      localStorage.setItem('wormgpt_chat_sessions', JSON.stringify(sessions));
+      localStorage.setItem('hoanghagpt_chat_sessions', JSON.stringify(sessions));
     } catch {}
   }, [sessions]);
 
@@ -822,143 +1239,240 @@ function App() {
   }, []);
 
   const scrollToBottom = () => {
-    try {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    } catch {}
+    requestAnimationFrame(() => {
+      try {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      } catch {}
+    });
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages, isGenerating]);
 
-  // Hotkey Ctrl+N for new chat
+  // Keyboard shortcut Ctrl+N
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
         handleNewChat();
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, []);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sessions]);
 
-  const handleRefillTokens = () => {
-    setTokensLeft(INITIAL_TOKENS);
+  // ─── File System Access Handlers ─────────────────────────────────────────────
+  const handlePickDirectory = async () => {
+    if ('showDirectoryPicker' in window) {
+      try {
+        const handle = await (window as any).showDirectoryPicker();
+        setDirectoryHandle(handle);
+        setDirName(handle.name);
+        alert(`Đã liên kết thành công thư mục: "${handle.name}". Bây giờ bạn có thể lưu file code trực tiếp vào máy tính!`);
+      } catch (e: any) {
+        if (e.name !== 'AbortError') {
+          console.error(e);
+        }
+      }
+    } else {
+      alert('Trình duyệt hiện tại chưa hỗ trợ Web File System Access API. Bạn vẫn có thể tải từng file về máy bằng nút Tải file!');
+    }
   };
 
+  const handleDisconnectDirectory = () => {
+    setDirectoryHandle(null);
+    setDirName(null);
+  };
+
+  const handleSaveToFolder = async (filename: string, code: string) => {
+    if (directoryHandle) {
+      try {
+        const fileHandle = await directoryHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(code);
+        await writable.close();
+        alert(`Đã lưu thành công tệp "${filename}" vào thư mục "${dirName}" trên máy của bạn!`);
+      } catch (err: any) {
+        alert(`Lỗi khi lưu file: ${err.message}`);
+      }
+    } else {
+      if ('showDirectoryPicker' in window) {
+        if (confirm('Bạn chưa chọn thư mục trên máy. Bạn có muốn chọn thư mục ngay bây giờ để lưu file?')) {
+          try {
+            const handle = await (window as any).showDirectoryPicker();
+            setDirectoryHandle(handle);
+            setDirName(handle.name);
+            const fileHandle = await handle.getFileHandle(filename, { create: true });
+            const writable = await fileHandle.createWritable();
+            await writable.write(code);
+            await writable.close();
+            alert(`Đã lưu thành công tệp "${filename}" vào thư mục "${handle.name}"!`);
+          } catch {}
+        }
+      } else {
+        downloadCodeFile(filename, code);
+      }
+    }
+  };
+
+  // ─── Session Management ─────────────────────────────────────────────────────
   const handleNewChat = () => {
+    if (isGenerating) return;
+    const newId = 'session_' + Date.now();
     const newSession: ChatSession = {
-      id: Date.now().toString(),
+      id: newId,
       title: 'Đoạn chat mới',
       messages: [],
       updatedAt: Date.now()
     };
     setSessions(prev => [newSession, ...prev]);
-    setActiveSessionId(newSession.id);
+    setActiveSessionId(newId);
+  };
+
+  const handleSelectSession = (id: string) => {
+    if (isGenerating) return;
+    setActiveSessionId(id);
   };
 
   const handleDeleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (sessions.length <= 1) {
-      setSessions([{ id: Date.now().toString(), title: 'Đoạn chat mới', messages: [], updatedAt: Date.now() }]);
+      setSessions([{
+        id: 'default',
+        title: 'Đoạn chat mới',
+        messages: [],
+        updatedAt: Date.now()
+      }]);
+      setActiveSessionId('default');
       return;
     }
-    setSessions(prev => prev.filter(s => s.id !== id));
+    const filtered = sessions.filter(s => s.id !== id);
+    setSessions(filtered);
     if (activeSessionId === id) {
-      const remaining = sessions.filter(s => s.id !== id);
-      if (remaining.length > 0) setActiveSessionId(remaining[0].id);
+      setActiveSessionId(filtered[0].id);
     }
   };
 
-  const handleStopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsGenerating(false);
+  const updateSessionTitle = (sessionId: string, titleText: string) => {
+    setSessions(prev =>
+      prev.map(s => (s.id === sessionId ? { ...s, title: titleText.slice(0, 32), updatedAt: Date.now() } : s))
+    );
   };
 
-  const updateCurrentSessionMessages = (updater: (prev: Message[]) => Message[]) => {
-    setSessions(prev => prev.map(s => {
-      if (s.id === activeSessionId) {
-        const updated = updater(s.messages);
-        const firstUser = updated.find(m => m.type === 'user');
-        const title = firstUser ? (firstUser.content.slice(0, 30) + (firstUser.content.length > 30 ? '...' : '')) : s.title;
-        return { ...s, messages: updated, title, updatedAt: Date.now() };
-      }
-      return s;
-    }));
+  const appendMessage = (sessionId: string, message: Message) => {
+    setSessions(prev =>
+      prev.map(s => {
+        if (s.id !== sessionId) return s;
+        return {
+          ...s,
+          messages: [...s.messages, message],
+          updatedAt: Date.now()
+        };
+      })
+    );
   };
 
+  const updateAIMessage = (sessionId: string, messageId: string, content: string, thinkingTime?: number) => {
+    setSessions(prev =>
+      prev.map(s => {
+        if (s.id !== sessionId) return s;
+        return {
+          ...s,
+          messages: s.messages.map(m => (m.id === messageId ? { ...m, content, thinkingTime: thinkingTime ?? m.thinkingTime } : m)),
+          updatedAt: Date.now()
+        };
+      })
+    );
+  };
+
+  // ─── Send Message & Stream Handler ──────────────────────────────────────────
   const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isGenerating) return;
+    if (!content.trim() || isGenerating || isSendingRef.current) return;
 
-    // Check token balance
+    // Check token quota
     if (tokensLeft < TOKENS_PER_MESSAGE) {
-      setShowTokenModal(true);
+      setIsTokenModalOpen(true);
       return;
     }
 
-    // Deduct 1,000 tokens
+    isSendingRef.current = true;
+    setIsGenerating(true);
+
+    // Deduct tokens
     setTokensLeft(prev => Math.max(0, prev - TOKENS_PER_MESSAGE));
 
+    const currentSId = activeSessionId;
+    const userMsgId = 'user_' + Date.now();
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: userMsgId,
       type: 'user',
       content: content.trim(),
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
-    updateCurrentSessionMessages(prev => [...prev, userMsg]);
+    appendMessage(currentSId, userMsg);
 
-    const aiMsgId = (Date.now() + 1).toString();
-    const aiMsg: Message = {
+    // Auto title if first message
+    if (messages.length === 0) {
+      updateSessionTitle(currentSId, content.trim());
+    }
+
+    const aiMsgId = 'ai_' + Date.now();
+    const aiPlaceholder: Message = {
       id: aiMsgId,
       type: 'ai',
       content: '',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isGenerating: true
     };
+    appendMessage(currentSId, aiPlaceholder);
 
-    updateCurrentSessionMessages(prev => [...prev, aiMsg]);
-    setIsGenerating(true);
-    abortControllerRef.current = new AbortController();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-    // Prepare conversation history (up to last 10 messages for rich context)
-    const conversationHistory = [
-      ...messages.slice(-10).map(m => ({
-        role: m.type === 'user' ? 'user' : 'assistant',
-        content: m.content
-      })),
-      { role: 'user', content: content.trim() }
-    ];
+    // Start thinking live timer
+    const startTime = Date.now();
+    setThinkingElapsed(0);
+    clearInterval(thinkingTimerRef.current);
+    thinkingTimerRef.current = setInterval(() => {
+      setThinkingElapsed(Number(((Date.now() - startTime) / 1000).toFixed(1)));
+    }, 100);
+
+    let recordedThinkingTime: number | undefined = undefined;
 
     try {
+      const cleanHistory = [...messages, userMsg].slice(-10).map(m => ({
+        role: m.type === 'user' ? 'user' : 'assistant',
+        content: m.content
+      }));
+
       const resp = await fetch(`${SERVER_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: conversationHistory,
+          messages: cleanHistory,
           model: activeModel,
-          temperature: 0.7,
           stream: true
         }),
-        signal: abortControllerRef.current.signal
+        signal: controller.signal
       });
 
       if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(errText || `Lỗi phản hồi (${resp.status})`);
+        throw new Error(`Lỗi kết nối máy chủ (${resp.status})`);
       }
 
-      const reader = resp.body!.getReader();
-      const decoder = new TextDecoder();
-      let fullContent = '';
+      if (!resp.body) {
+        throw new Error('Trình duyệt không hỗ trợ luồng dữ liệu.');
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let aiText = '';
       let buffer = '';
       let streamDone = false;
 
-      while (!streamDone) {
+      while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -977,133 +1491,175 @@ function App() {
 
           try {
             const json = JSON.parse(trimmed.slice(5).trim());
-            const delta = json.message?.content || json.choices?.[0]?.delta?.content || '';
-            if (delta) {
-              fullContent += delta;
-              updateCurrentSessionMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, content: fullContent } : m));
-            }
             if (json.done) {
               streamDone = true;
               break;
             }
+
+            const chunk = json.message?.content || json.choices?.[0]?.delta?.content || '';
+            if (chunk) {
+              if (recordedThinkingTime === undefined) {
+                recordedThinkingTime = Number(((Date.now() - startTime) / 1000).toFixed(1));
+              }
+              aiText += chunk;
+              updateAIMessage(currentSId, aiMsgId, aiText, recordedThinkingTime);
+            }
           } catch {}
+        }
+
+        if (streamDone) {
+          try { await reader.cancel(); } catch {}
+          break;
         }
       }
 
-      try {
-        reader.cancel();
-      } catch {}
-
-      updateCurrentSessionMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, isGenerating: false } : m));
+      // If finished and no chunk received
+      if (!aiText) {
+        aiText = 'Tôi đã nhận được yêu cầu và đã xử lý xong.';
+        updateAIMessage(currentSId, aiMsgId, aiText, recordedThinkingTime);
+      }
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        updateCurrentSessionMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, isGenerating: false } : m));
+        // User intentionally stopped
       } else {
-        updateCurrentSessionMessages(prev => prev.map(m => m.id === aiMsgId ? {
-          ...m,
-          content: m.content ? m.content : `⚠️ Lỗi kết nối: ${err.message || 'Không thể phản hồi. Vui lòng thử lại.'}`,
-          isGenerating: false,
-          isError: true
-        } : m));
+        updateAIMessage(currentSId, aiMsgId, `⚠️ [HoangHaGPT Thông Báo: ${err.message || 'Không thể nhận phản hồi'}]`);
       }
     } finally {
+      clearInterval(thinkingTimerRef.current);
+      const finalDuration = recordedThinkingTime ?? Number(((Date.now() - startTime) / 1000).toFixed(1));
+      updateAIMessage(currentSId, aiMsgId, currentSession.messages.find(m => m.id === aiMsgId)?.content || '', finalDuration);
+
       setIsGenerating(false);
+      isSendingRef.current = false;
       abortControllerRef.current = null;
     }
   };
 
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    clearInterval(thinkingTimerRef.current);
+    setIsGenerating(false);
+    isSendingRef.current = false;
+  };
+
+  const handleRegenerate = (msgIndex: number) => {
+    if (isGenerating) return;
+    const userMsg = messages[msgIndex - 1];
+    if (userMsg && userMsg.type === 'user') {
+      handleSendMessage(userMsg.content);
+    }
+  };
+
+  const handleOpenCanvas = (data: CanvasData) => {
+    setCanvasData(data);
+    setIsCanvasOpen(true);
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white text-gray-900 transition-colors">
-      {/* Left Sidebar (ChatGPT Style) */}
+    <div className={`flex h-screen w-screen overflow-hidden theme-${theme} bg-[var(--bg-primary)] text-[var(--text-primary)] select-text font-sans`}>
+      {/* Left Sidebar */}
       <ChatGPTSidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
         sessions={sessions}
         activeSessionId={activeSessionId}
-        onSelectSession={setActiveSessionId}
+        onSelectSession={handleSelectSession}
         onNewChat={handleNewChat}
         onDeleteSession={handleDeleteSession}
         tokensLeft={tokensLeft}
-        onOpenTokenModal={() => setShowTokenModal(true)}
-        onOpenSettings={() => setShowSettingsModal(true)}
+        onOpenTokenModal={() => setIsTokenModalOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative bg-white">
-        {/* Top Header */}
-        <ChatGPTHeader
-          activeModel={activeModel}
-          onModelChange={setActiveModel}
-          models={models}
-          tokensLeft={tokensLeft}
-          onOpenTokenModal={() => setShowTokenModal(true)}
-          onNewChat={handleNewChat}
-          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-          sidebarOpen={sidebarOpen}
-          onOpenSettings={() => setShowSettingsModal(true)}
-        />
+      {/* Main Chat Workspace */}
+      <div className="flex-1 flex h-full overflow-hidden relative">
+        <div className="flex-1 flex flex-col h-full overflow-hidden">
+          {/* Header */}
+          <ChatGPTHeader
+            activeModel={activeModel}
+            models={models}
+            onModelChange={setActiveModel}
+            onNewChat={handleNewChat}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+            tokensLeft={tokensLeft}
+            onOpenTokenModal={() => setIsTokenModalOpen(true)}
+            theme={theme}
+            onSelectTheme={setTheme}
+            folderName={dirName}
+            onPickFolder={handlePickDirectory}
+            onDisconnectFolder={handleDisconnectDirectory}
+          />
 
-        {/* Message Viewport */}
-        <main className="flex-1 overflow-y-auto flex flex-col">
-          {messages.length === 0 ? (
-            <div className="my-auto">
-              <ChatGPTHero onPromptSelect={handleSendMessage} />
-            </div>
-          ) : (
-            <div className="py-4 space-y-2 flex-1 max-w-3xl mx-auto w-full">
-              {messages.map(msg => (
-                msg.type === 'user' ? (
-                  <ChatGPTUserMessage
-                    key={msg.id}
-                    message={msg}
-                  />
-                ) : (
-                  <ChatGPTAIMessage
-                    key={msg.id}
-                    message={msg}
-                    onRegenerate={() => {
-                      const userMsgs = messages.filter(m => m.type === 'user');
-                      if (userMsgs.length > 0) handleSendMessage(userMsgs[userMsgs.length - 1].content);
-                    }}
-                    isGenerating={msg.isGenerating || false}
-                  />
-                )
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </main>
+          {/* Messages Viewport */}
+          <main className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col">
+            {messages.length === 0 ? (
+              <ChatGPTWelcomeView onSelectPrompt={handleSendMessage} />
+            ) : (
+              <div className="py-4 space-y-2 flex-1">
+                {messages.map((m, idx) =>
+                  m.type === 'user' ? (
+                    <ChatGPTUserMessage key={m.id} content={m.content} />
+                  ) : (
+                    <ChatGPTAIMessage
+                      key={m.id}
+                      message={m}
+                      isGenerating={isGenerating && idx === messages.length - 1}
+                      thinkingElapsed={thinkingElapsed}
+                      onRegenerate={idx === messages.length - 1 ? () => handleRegenerate(idx) : undefined}
+                      onOpenCanvas={handleOpenCanvas}
+                      onSaveToFolder={handleSaveToFolder}
+                      folderName={dirName}
+                    />
+                  )
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+          </main>
 
-        {/* Bottom Floating Input Dock */}
-        <footer className="w-full bg-white/95 backdrop-blur pt-1">
+          {/* Input Dock */}
           <ChatGPTInputDock
             onSendMessage={handleSendMessage}
             isGenerating={isGenerating}
             onStopGeneration={handleStopGeneration}
             tokensLeft={tokensLeft}
-            onOpenTokenModal={() => setShowTokenModal(true)}
+            onOpenTokenModal={() => setIsTokenModalOpen(true)}
+            folderName={dirName}
+            onPickFolder={handlePickDirectory}
           />
-        </footer>
+        </div>
+
+        {/* Interactive Code Canvas Side Panel */}
+        <CanvasPanel
+          data={canvasData}
+          isOpen={isCanvasOpen}
+          onClose={() => setIsCanvasOpen(false)}
+          onSaveToFolder={handleSaveToFolder}
+          folderName={dirName}
+        />
       </div>
 
       {/* Token Management Modal */}
       <TokenModal
-        isOpen={showTokenModal}
-        onClose={() => setShowTokenModal(false)}
+        isOpen={isTokenModalOpen}
+        onClose={() => setIsTokenModalOpen(false)}
         tokensLeft={tokensLeft}
-        onRefill={handleRefillTokens}
+        onRefill={() => setTokensLeft(INITIAL_TOKENS)}
       />
 
       {/* Settings Modal */}
       <SettingsModal
-        isOpen={showSettingsModal}
-        onClose={() => setShowSettingsModal(false)}
-        activeModel={activeModel}
-        onModelChange={setActiveModel}
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
         models={models}
+        activeModel={activeModel}
+        onSelectModel={setActiveModel}
+        theme={theme}
+        onSelectTheme={setTheme}
       />
     </div>
   );
 }
-
-export default App;
