@@ -4,11 +4,19 @@ import {
   Sparkles, Send, Square, Copy, Check, RotateCcw, Volume2, VolumeX,
   Settings, Plus, Trash2, ChevronDown, ChevronUp, Zap, RefreshCw,
   Folder, FolderCheck, Download, Code2, Brain, Flame, Sun, Moon,
-  X, MessageSquare, CheckCircle2, Sliders, ExternalLink, Save
+  X, MessageSquare, CheckCircle2, Sliders, ExternalLink, Save,
+  Image as ImageIcon, Paperclip, FileText, Upload
 } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ThemeMode = 'light' | 'dark' | 'devil';
+
+interface AttachedFile {
+  name: string;
+  size: number;
+  content: string;
+  ext?: string;
+}
 
 interface Message {
   id: string;
@@ -19,6 +27,8 @@ interface Message {
   isError?: boolean;
   thinkingTime?: number;
   thinkingText?: string;
+  images?: string[];
+  files?: AttachedFile[];
 }
 
 interface ChatSession {
@@ -902,12 +912,83 @@ const ChatGPTSidebar = ({
 };
 
 // ─── ChatGPT User Message ─────────────────────────────────────────────────────
-const ChatGPTUserMessage = ({ content }: { content: string }) => {
+const ChatGPTUserMessage = ({ message }: { message: Message }) => {
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+
   return (
     <div className="flex justify-end px-4 py-2 max-w-3xl mx-auto w-full animate-chat-in">
-      <div className="chatgpt-user-bubble">
-        {content}
+      <div className="chatgpt-user-bubble flex flex-col gap-2.5 max-w-[85%]">
+        {/* Attached Images preview in user bubble */}
+        {message.images && message.images.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {message.images.map((img, idx) => (
+              <div key={idx} className="relative group overflow-hidden rounded-2xl border border-white/10 shadow-md">
+                <img
+                  src={img}
+                  alt="Ảnh đã gửi"
+                  onClick={() => setLightboxImg(img)}
+                  className="max-h-60 max-w-full object-cover rounded-2xl cursor-pointer hover:scale-[1.02] transition-transform"
+                />
+                <div
+                  onClick={() => setLightboxImg(img)}
+                  className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white text-xs font-medium"
+                >
+                  🔍 Nhấn để phóng to
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Attached Files badge cards */}
+        {message.files && message.files.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {message.files.map((file, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-black/25 border border-white/10 text-xs font-mono"
+              >
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0">
+                  <FileText size={15} />
+                </div>
+                <div className="overflow-hidden flex-1">
+                  <div className="font-semibold truncate text-[var(--text-primary)]">{file.name}</div>
+                  <div className="text-[10px] text-[var(--text-muted)]">{(file.size / 1024).toFixed(1)} KB</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Text content */}
+        {message.content && (
+          <div className="whitespace-pre-wrap leading-relaxed">
+            {message.content}
+          </div>
+        )}
       </div>
+
+      {/* Fullscreen Lightbox Modal */}
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 animate-chat-in cursor-zoom-out"
+          onClick={() => setLightboxImg(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh]" onClick={e => e.stopPropagation()}>
+            <img
+              src={lightboxImg}
+              alt="Phóng to ảnh"
+              className="max-h-[85vh] max-w-full rounded-2xl shadow-2xl object-contain border border-white/15"
+            />
+            <button
+              onClick={() => setLightboxImg(null)}
+              className="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white/20 text-white flex items-center justify-center hover:bg-white/40 transition-colors shadow-lg cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1141,6 +1222,59 @@ const ChatGPTAIMessage = ({
   );
 };
 
+// ─── File & Image Process Helpers ─────────────────────────────────────────────
+function processImageFile(file: File, callback: (imgData: { url: string; name: string; size: number }) => void) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target?.result as string;
+    if (!dataUrl) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const maxDim = 1600;
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const compressed = canvas.toDataURL('image/jpeg', 0.85);
+          callback({ url: compressed, name: file.name, size: Math.round(compressed.length * 0.75) });
+          return;
+        }
+      }
+      callback({ url: dataUrl, name: file.name, size: file.size });
+    };
+    img.src = dataUrl;
+  };
+  reader.readAsDataURL(file);
+}
+
+function processTextFile(file: File, callback: (fileData: AttachedFile) => void) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const content = (e.target?.result as string) || '';
+    const ext = file.name.split('.').pop() || '';
+    callback({
+      name: file.name,
+      size: file.size,
+      content: content,
+      ext: ext
+    });
+  };
+  reader.readAsText(file);
+}
+
 // ─── ChatGPT Floating Input Dock ──────────────────────────────────────────────
 const ChatGPTInputDock = ({
   onSendMessage,
@@ -1151,7 +1285,7 @@ const ChatGPTInputDock = ({
   folderName,
   onPickFolder
 }: {
-  onSendMessage: (msg: string) => void;
+  onSendMessage: (msg: string, images?: string[], files?: AttachedFile[]) => void;
   isGenerating: boolean;
   onStopGeneration: () => void;
   tokensLeft: number;
@@ -1160,12 +1294,79 @@ const ChatGPTInputDock = ({
   onPickFolder: () => void;
 }) => {
   const [text, setText] = useState('');
+  const [attachedImages, setAttachedImages] = useState<{ id: string; url: string; name: string; size: number }[]>([]);
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFiles = (fileList: File[]) => {
+    for (const file of fileList) {
+      if (file.type.startsWith('image/')) {
+        processImageFile(file, (img) => {
+          setAttachedImages(prev => [...prev, { id: 'img_' + Date.now() + Math.random(), ...img }]);
+        });
+      } else {
+        processTextFile(file, (f) => {
+          setAttachedFiles(prev => [...prev, f]);
+        });
+      }
+    }
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(Array.from(e.target.files));
+      e.target.value = '';
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(Array.from(e.target.files));
+      e.target.value = '';
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          processImageFile(file, (img) => {
+            setAttachedImages(prev => [...prev, { id: 'img_' + Date.now() + Math.random(), ...img }]);
+          });
+          e.preventDefault();
+        }
+      }
+    }
+  };
+
+  const removeImage = (id: string) => {
+    setAttachedImages(prev => prev.filter(img => img.id !== id));
+  };
+
+  const removeFile = (idx: number) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const canSend = text.trim().length > 0 || attachedImages.length > 0 || attachedFiles.length > 0;
 
   const handleSend = () => {
-    if (text.trim() && !isGenerating) {
-      onSendMessage(text);
+    if (canSend && !isGenerating) {
+      onSendMessage(
+        text,
+        attachedImages.map(img => img.url),
+        attachedFiles
+      );
       setText('');
+      setAttachedImages([]);
+      setAttachedFiles([]);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -1182,13 +1383,105 @@ const ChatGPTInputDock = ({
 
   return (
     <div className="w-full max-w-3xl mx-auto px-4 pb-4">
-      <div className="chatgpt-input-dock p-2 relative flex flex-col">
+      {/* Hidden file pickers */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+        multiple
+        className="hidden"
+        onChange={handleImageChange}
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".txt,.py,.js,.ts,.jsx,.tsx,.html,.css,.json,.csv,.md,.c,.cpp,.java,.rs,.go,.php,.sql,.sh,.log,.xml,.yaml,.yml,.pdf"
+        multiple
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      <div
+        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={e => {
+          e.preventDefault();
+          setIsDragging(false);
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleFiles(Array.from(e.dataTransfer.files));
+          }
+        }}
+        className={`chatgpt-input-dock p-2 relative flex flex-col transition-all duration-200 ${
+          isDragging ? 'ring-2 ring-[var(--accent-color)] bg-[var(--accent-color)]/10' : ''
+        }`}
+      >
+        {/* Drag Overlay Hint */}
+        {isDragging && (
+          <div className="absolute inset-0 rounded-3xl bg-[var(--bg-card)]/90 backdrop-blur-sm z-30 flex items-center justify-center gap-2 border-2 border-dashed border-[var(--accent-color)] text-[var(--accent-color)] font-semibold text-sm">
+            <Upload size={20} className="animate-bounce" />
+            <span>Thả hình ảnh hoặc tệp mã nguồn vào đây để phân tích...</span>
+          </div>
+        )}
+
+        {/* Attachment Preview Tray */}
+        {(attachedImages.length > 0 || attachedFiles.length > 0) && (
+          <div className="flex flex-wrap gap-2 px-2 py-2 border-b border-[var(--border-subtle)]/40 mb-1 max-h-40 overflow-y-auto no-scrollbar">
+            {/* Image Previews */}
+            {attachedImages.map(img => (
+              <div
+                key={img.id}
+                className="relative group rounded-xl overflow-hidden border border-white/10 shadow-sm w-16 h-16 bg-black/40 flex-shrink-0"
+              >
+                <img src={img.url} alt={img.name} className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => removeImage(img.id)}
+                  title="Xoá ảnh này"
+                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/75 text-white flex items-center justify-center hover:bg-red-500 transition-colors shadow-sm cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+
+            {/* File Previews */}
+            {attachedFiles.map((file, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs font-mono shadow-xs max-w-[220px]"
+              >
+                <FileText size={14} className="text-emerald-400 flex-shrink-0" />
+                <div className="overflow-hidden flex-1">
+                  <div className="font-semibold truncate text-[var(--text-primary)]">{file.name}</div>
+                  <div className="text-[9px] text-[var(--text-muted)]">{(file.size / 1024).toFixed(1)} KB</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeFile(idx)}
+                  title="Xoá tệp này"
+                  className="p-1 rounded-full hover:bg-[var(--border-subtle)] text-[var(--text-muted)] hover:text-red-400 transition-colors cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Text Input Area */}
         <textarea
           ref={textareaRef}
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isGenerating ? 'HoangHaGPT đang suy nghĩ và tạo câu trả lời...' : 'Nhắn gì đó với HoangHaGPT... (Enter để gửi, Shift+Enter xuống dòng)'}
+          onPaste={handlePaste}
+          placeholder={
+            isGenerating
+              ? 'HoangHaGPT đang suy nghĩ và phân tích...'
+              : attachedImages.length > 0 || attachedFiles.length > 0
+              ? 'Nhập câu hỏi hoặc yêu cầu phân tích cho ảnh/tệp... (Enter để gửi)'
+              : 'Nhắn tin hoặc dán ảnh (Ctrl+V) / tệp vào đây...'
+          }
           disabled={isGenerating}
           rows={1}
           className="w-full bg-transparent px-3 py-1.5 text-[15px] text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none resize-none min-h-[44px] max-h-[160px] leading-relaxed"
@@ -1199,25 +1492,48 @@ const ChatGPTInputDock = ({
           }}
         />
 
+        {/* Bottom Dock Controls */}
         <div className="flex items-center justify-between px-2 pt-1 border-t border-[var(--border-subtle)]/40 mt-1">
-          <div className="flex items-center gap-3">
+          {/* Left Action Buttons: Image & File Upload */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => imageInputRef.current?.click()}
+              title="Tải ảnh lên để AI đọc và phân tích (hỗ trợ kéo thả hoặc dán ảnh Ctrl+V)"
+              className="px-2.5 py-1 rounded-xl hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer border border-transparent hover:border-[var(--border-subtle)]"
+            >
+              <ImageIcon size={15} className="text-purple-400" />
+              <span>Tải ảnh</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Đính kèm tệp mã nguồn, dữ liệu (.py, .js, .json, .txt, .csv, ...) để AI đọc"
+              className="px-2.5 py-1 rounded-xl hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex items-center gap-1.5 text-xs font-medium transition-colors cursor-pointer border border-transparent hover:border-[var(--border-subtle)]"
+            >
+              <Paperclip size={15} className="text-emerald-400" />
+              <span>Tệp</span>
+            </button>
+
             <button
               type="button"
               onClick={onOpenTokenModal}
-              className="text-[11px] font-medium text-[var(--text-muted)] hover:text-emerald-500 flex items-center gap-1 transition-colors cursor-pointer"
+              className="text-[11px] font-medium text-[var(--text-muted)] hover:text-emerald-500 items-center gap-1 transition-colors cursor-pointer hidden md:flex ml-2"
             >
               <Zap size={12} className="text-emerald-500 fill-emerald-500" />
-              <span>-1,000 tokens/tin ({tokensLeft.toLocaleString()} còn)</span>
+              <span>{tokensLeft.toLocaleString()} tokens</span>
             </button>
 
             {folderName && (
-              <span className="text-[11px] text-emerald-500 font-semibold flex items-center gap-1 hidden sm:inline">
+              <span className="text-[11px] text-emerald-500 font-semibold items-center gap-1 hidden lg:flex ml-1">
                 <FolderCheck size={12} />
                 <span>Thư mục: {folderName}</span>
               </span>
             )}
           </div>
 
+          {/* Right Action Buttons: Send & Stop */}
           <div className="flex items-center gap-1">
             {isGenerating ? (
               <button
@@ -1232,8 +1548,8 @@ const ChatGPTInputDock = ({
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={!text.trim()}
-                title="Gửi tin nhắn"
+                disabled={!canSend}
+                title="Gửi tin nhắn (Enter)"
                 className="w-8 h-8 rounded-full bg-[var(--text-primary)] disabled:opacity-30 text-[var(--bg-primary)] flex items-center justify-center hover:opacity-85 transition-opacity cursor-pointer shadow-xs"
               >
                 <Send size={14} />
@@ -1564,8 +1880,16 @@ export default function App() {
   };
 
   // ─── Send Message & Stream Handler ──────────────────────────────────────────
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isGenerating || isSendingRef.current) return;
+  const handleSendMessage = async (
+    content: string,
+    attachedImages?: string[],
+    attachedFiles?: AttachedFile[]
+  ) => {
+    const trimmed = (content || '').trim();
+    const hasImages = !!(attachedImages && attachedImages.length > 0);
+    const hasFiles = !!(attachedFiles && attachedFiles.length > 0);
+
+    if ((!trimmed && !hasImages && !hasFiles) || isGenerating || isSendingRef.current) return;
 
     // Check token quota
     if (tokensLeft < TOKENS_PER_MESSAGE) {
@@ -1586,15 +1910,18 @@ export default function App() {
     const userMsg: Message = {
       id: userMsgId,
       type: 'user',
-      content: content.trim(),
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      content: trimmed,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      images: hasImages ? attachedImages : undefined,
+      files: hasFiles ? attachedFiles : undefined
     };
 
     appendMessage(currentSId, userMsg);
 
     // Auto title if first message
     if (messages.length === 0) {
-      updateSessionTitle(currentSId, content.trim());
+      const titleCandidate = trimmed || (hasImages ? 'Phân tích hình ảnh' : attachedFiles?.[0]?.name || 'Phân tích tệp');
+      updateSessionTitle(currentSId, titleCandidate);
     }
 
     const aiMsgId = 'ai_' + Date.now();
@@ -1622,21 +1949,66 @@ export default function App() {
     let aiText = '';
 
     try {
-      const cleanHistory: { role: string; content: string }[] = [
+      // Build text prompt integrating attached files
+      let fullPromptText = trimmed;
+      if (hasFiles && attachedFiles) {
+        const fileContextBlocks = attachedFiles.map(f => {
+          const lang = f.ext || deduceFilename(f.name).split('.').pop() || 'txt';
+          return `[TỆP ĐÍNH KÈM: ${f.name} (${(f.size / 1024).toFixed(1)} KB)]\n\`\`\`${lang}\n${f.content}\n\`\`\``;
+        }).join('\n\n');
+
+        fullPromptText = fullPromptText
+          ? `${fileContextBlocks}\n\n[YÊU CẦU CỦA NGƯỜI DÙNG]:\n${fullPromptText}`
+          : `${fileContextBlocks}\n\n[YÊU CẦU CỦA NGƯỜI DÙNG]:\nHãy phân tích, giải thích chi tiết, tìm lỗi hoặc tối ưu hóa tệp mã nguồn đính kèm trên.`;
+      }
+
+      if (!fullPromptText && hasImages) {
+        fullPromptText = 'Hãy phân tích hình ảnh này thật chi tiết, đọc toàn bộ văn bản/mã nguồn hoặc cấu trúc có trong ảnh và giải thích rõ ràng.';
+      }
+
+      // Format user message payload (multimodal if images attached)
+      let userPayloadContent: any = fullPromptText;
+      if (hasImages && attachedImages) {
+        userPayloadContent = [
+          { type: 'text', text: fullPromptText },
+          ...attachedImages.map(imgUrl => ({
+            type: 'image_url',
+            image_url: { url: imgUrl }
+          }))
+        ];
+      }
+
+      const cleanHistory: { role: string; content: any }[] = [
         { role: 'system', content: HOANGHA_SYSTEM_PROMPT },
-        ...messages.slice(-10).map(m => ({
-          role: m.type === 'user' ? 'user' : 'assistant',
-          content: m.content
-        })),
-        { role: 'user', content: userMsg.content }
+        ...messages.slice(-10).map(m => {
+          if (m.images && m.images.length > 0) {
+            return {
+              role: m.type === 'user' ? 'user' : 'assistant',
+              content: [
+                { type: 'text', text: m.content || 'Hình ảnh đính kèm' },
+                ...m.images.map(imgUrl => ({ type: 'image_url', image_url: { url: imgUrl } }))
+              ]
+            };
+          }
+          return {
+            role: m.type === 'user' ? 'user' : 'assistant',
+            content: m.content
+          };
+        }),
+        { role: 'user', content: userPayloadContent }
       ];
+
+      // Auto use gpt-4o-mini if image attached to ensure vision capability
+      const modelToUse = hasImages && !activeModel.includes('vision') && !activeModel.includes('gpt-4o')
+        ? 'openai/gpt-4o-mini'
+        : activeModel;
 
       const resp = await fetch(`${SERVER_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: cleanHistory,
-          model: activeModel,
+          model: modelToUse,
           stream: true
         }),
         signal: controller.signal
@@ -1872,7 +2244,7 @@ export default function App() {
               <div className="py-4 space-y-2 flex-1">
                 {messages.map((m, idx) =>
                   m.type === 'user' ? (
-                    <ChatGPTUserMessage key={m.id} content={m.content} />
+                    <ChatGPTUserMessage key={m.id} message={m} />
                   ) : (
                     <ChatGPTAIMessage
                       key={m.id}

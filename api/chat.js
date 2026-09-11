@@ -39,22 +39,35 @@ export default async function handler(req, res) {
   const { messages = [], model, temperature, stream = true, apiKey } = body;
   const temp = temperature ?? 0.7;
 
-  let cleanMessages = (messages || []).map(m => ({
-    role: m.role || (m.type === 'user' ? 'user' : 'assistant'),
-    content: typeof m.content === 'string' ? m.content : String(m.content || '')
-  }));
+  let cleanMessages = (messages || []).map(m => {
+    if (Array.isArray(m.content)) {
+      return {
+        role: m.role || (m.type === 'user' ? 'user' : 'assistant'),
+        content: m.content
+      };
+    }
+    return {
+      role: m.role || (m.type === 'user' ? 'user' : 'assistant'),
+      content: typeof m.content === 'string' ? m.content : String(m.content || '')
+    };
+  });
 
   if (!cleanMessages.some(m => m.role === 'system')) {
     cleanMessages.unshift({ role: 'system', content: HOANGHA_SYSTEM_PROMPT });
   } else {
     const sIdx = cleanMessages.findIndex(m => m.role === 'system');
-    if (!cleanMessages[sIdx].content.includes('HoangHaGPT')) {
+    if (typeof cleanMessages[sIdx].content === 'string' && !cleanMessages[sIdx].content.includes('HoangHaGPT')) {
       cleanMessages[sIdx].content = `${HOANGHA_SYSTEM_PROMPT}\n\n${cleanMessages[sIdx].content}`;
     }
   }
 
+  const hasImage = cleanMessages.some(m => Array.isArray(m.content) && m.content.some(c => c.type === 'image_url'));
+
   const openRouterKey = apiKey || process.env.OPENROUTER_API_KEY || DEFAULT_OPENROUTER_KEY;
-  const selectedModel = model === 'gpt-4o-mini' ? 'openai/gpt-4o-mini' : (model || 'meta-llama/llama-3.3-70b-instruct');
+  let selectedModel = model === 'gpt-4o-mini' ? 'openai/gpt-4o-mini' : (model || 'meta-llama/llama-3.3-70b-instruct');
+  if (hasImage && !selectedModel.includes('gpt-4o') && !selectedModel.includes('vision')) {
+    selectedModel = 'openai/gpt-4o-mini';
+  }
 
   try {
     const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
