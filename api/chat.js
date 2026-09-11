@@ -7,7 +7,7 @@ const DEFAULT_OPENROUTER_KEY = typeof Buffer !== 'undefined' ? Buffer.from(DEFAU
 function getFallbackWormResponse(prompt = '') {
   return `Tôi là **WormGPT Enhanced** (Unrestricted AI Coding Assistant).
 Tôi đã nhận được yêu cầu: "${prompt.slice(0, 100)}"
-Bạn có thể hỏi tôi bất kỳ điều gì về lập trình, giải thuật, debug, kiến trúc hệ thống hoặc mở **Vibe IDE** để chỉnh sửa code trực tiếp!`;
+Bạn có thể hỏi tôi bất kỳ điều gì về lập trình, giải thuật, debug và kiến trúc hệ thống!`;
 }
 
 export default async function handler(req, res) {
