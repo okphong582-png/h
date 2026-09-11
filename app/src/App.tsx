@@ -338,17 +338,21 @@ const CanvasPanel = ({
   isOpen,
   onClose,
   onSaveToFolder,
-  folderName
+  folderName,
+  isGenerating
 }: {
   data: CanvasData | null;
   isOpen: boolean;
   onClose: () => void;
   onSaveToFolder: (filename: string, code: string) => void;
   folderName: string | null;
+  isGenerating?: boolean;
 }) => {
   const [currentCode, setCurrentCode] = useState(data?.code || '');
   const [filename, setFilename] = useState(data?.filename || 'code.txt');
   const [copied, setCopied] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (data) {
@@ -356,6 +360,22 @@ const CanvasPanel = ({
       setFilename(data.filename);
     }
   }, [data]);
+
+  // Auto-scroll when code is streaming live
+  useEffect(() => {
+    if (isGenerating && textareaRef.current) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+      if (lineNumbersRef.current) {
+        lineNumbersRef.current.scrollTop = textareaRef.current.scrollHeight;
+      }
+    }
+  }, [currentCode, isGenerating]);
+
+  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (lineNumbersRef.current) {
+      lineNumbersRef.current.scrollTop = e.currentTarget.scrollTop;
+    }
+  };
 
   if (!isOpen || !data) return null;
 
@@ -386,14 +406,21 @@ const CanvasPanel = ({
               value={filename}
               onChange={e => setFilename(e.target.value)}
               title="Nhấn để đổi tên file"
-              className="bg-transparent font-mono text-xs font-bold text-[var(--text-primary)] border border-transparent hover:border-[var(--border-strong)] focus:border-[var(--accent-color)] rounded px-1.5 py-0.5 outline-none transition-colors max-w-[180px]"
+              className="bg-transparent font-mono text-xs font-bold text-[var(--text-primary)] border border-transparent hover:border-[var(--border-strong)] focus:border-[var(--accent-color)] rounded px-1.5 py-0.5 outline-none transition-colors max-w-[170px]"
             />
             <span className="text-[10px] font-mono px-2 py-0.5 rounded uppercase font-semibold bg-[var(--border-subtle)] text-[var(--text-secondary)] flex-shrink-0">
               {data.lang || 'code'}
             </span>
-            <span className="text-[10px] text-[var(--text-muted)] font-mono hidden sm:inline flex-shrink-0">
-              {lineCount} dòng
-            </span>
+            {isGenerating ? (
+              <span className="text-[10px] text-emerald-500 font-semibold flex items-center gap-1 animate-pulse flex-shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                Đang viết...
+              </span>
+            ) : (
+              <span className="text-[10px] text-[var(--text-muted)] font-mono hidden sm:inline flex-shrink-0">
+                {lineCount} dòng
+              </span>
+            )}
           </div>
         </div>
 
@@ -439,7 +466,10 @@ const CanvasPanel = ({
       {/* Editor / Code Body */}
       <div className="flex-1 flex overflow-hidden bg-[#0d0d0d]">
         {/* Line Numbers */}
-        <div className="select-none py-3 px-2 text-right text-[11px] font-mono text-gray-600 bg-[#080808] border-r border-gray-800/80 w-11 flex-shrink-0">
+        <div
+          ref={lineNumbersRef}
+          className="select-none py-3 px-2 text-right text-[11px] font-mono text-gray-600 bg-[#080808] border-r border-gray-800/80 w-11 flex-shrink-0 overflow-hidden"
+        >
           {lines.map((_, i) => (
             <div key={i} className="leading-6">
               {i + 1}
@@ -449,8 +479,10 @@ const CanvasPanel = ({
 
         {/* Code View / Edit */}
         <textarea
+          ref={textareaRef}
           value={currentCode}
           onChange={e => setCurrentCode(e.target.value)}
+          onScroll={handleScroll}
           spellCheck={false}
           className="flex-1 p-3 bg-transparent text-gray-100 font-mono text-xs leading-6 resize-none outline-none overflow-auto tab-size-2"
         />
@@ -459,8 +491,8 @@ const CanvasPanel = ({
       {/* Canvas Footer Status */}
       <div className="px-4 py-2 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[11px] text-[var(--text-muted)] flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Canvas tương tác • Bạn có thể chỉnh sửa trực tiếp mã trước khi tải/lưu</span>
+          <span className={`inline-block w-2 h-2 rounded-full ${isGenerating ? 'bg-amber-400 animate-ping' : 'bg-emerald-500 animate-pulse'}`} />
+          <span>{isGenerating ? 'AI đang viết mã trực tiếp trong Canvas...' : 'Canvas tương tác • Bạn có thể sửa trực tiếp trước khi lưu'}</span>
         </div>
         {folderName && (
           <span className="text-emerald-500 font-semibold flex items-center gap-1">
@@ -1224,6 +1256,8 @@ export default function App() {
   // Canvas Side Panel
   const [canvasData, setCanvasData] = useState<CanvasData | null>(null);
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
+  const isCanvasOpenRef = useRef(false);
+  const userManuallyClosedCanvasRef = useRef(false);
 
   // Web File System Access API
   const [directoryHandle, setDirectoryHandle] = useState<any | null>(null);
@@ -1436,6 +1470,8 @@ export default function App() {
 
     isSendingRef.current = true;
     setIsGenerating(true);
+    isCanvasOpenRef.current = false;
+    userManuallyClosedCanvasRef.current = false;
 
     // Deduct tokens
     setTokensLeft(prev => Math.max(0, prev - TOKENS_PER_MESSAGE));
@@ -1541,6 +1577,26 @@ export default function App() {
               }
               aiText += chunk;
               updateAIMessage(currentSId, aiMsgId, aiText, recordedThinkingTime);
+
+              // ─── Live Streaming directly into Canvas from the very first line ───
+              const codeBlockMatch = aiText.match(/```(\w+)?\n?([\s\S]*)$/);
+              if (codeBlockMatch) {
+                const lang = (codeBlockMatch[1] || 'code').trim();
+                const currentCode = codeBlockMatch[2].replace(/```$/, '');
+                const filename = deduceFilename(lang);
+
+                setCanvasData({
+                  title: filename,
+                  code: currentCode,
+                  lang: lang,
+                  filename: filename
+                });
+
+                if (!isCanvasOpenRef.current && !userManuallyClosedCanvasRef.current) {
+                  setIsCanvasOpen(true);
+                  isCanvasOpenRef.current = true;
+                }
+              }
             }
           } catch {}
         }
@@ -1636,6 +1692,14 @@ export default function App() {
   const handleOpenCanvas = (data: CanvasData) => {
     setCanvasData(data);
     setIsCanvasOpen(true);
+    isCanvasOpenRef.current = true;
+    userManuallyClosedCanvasRef.current = false;
+  };
+
+  const handleCloseCanvas = () => {
+    setIsCanvasOpen(false);
+    isCanvasOpenRef.current = false;
+    userManuallyClosedCanvasRef.current = true;
   };
 
   return (
@@ -1732,9 +1796,10 @@ export default function App() {
         <CanvasPanel
           data={canvasData}
           isOpen={isCanvasOpen}
-          onClose={() => setIsCanvasOpen(false)}
+          onClose={handleCloseCanvas}
           onSaveToFolder={handleSaveToFolder}
           folderName={dirName}
+          isGenerating={isGenerating}
         />
       </div>
 
