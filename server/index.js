@@ -188,7 +188,7 @@ app.post('/api/chat', async (req, res) => {
   const { messages, model, temperature, stream, ollamaUrl, provider, apiKey } = req.body;
   const temp = temperature ?? 0.7;
 
-  const DEFAULT_KEY_B64 = 'c2stb3ItdjEtYzQxMjE2NTdlZGI0N2Y3MzJmMTA4NjM4YjhmNWFhMmRmMWJlZGRhNmJjODBmNmQ3YzVmZjU5OWNiZTdkMjYz';
+  const DEFAULT_KEY_B64 = 'c2stb3ItdjEtYzQxMjE2NTdlZGI0N2Y3MzJmMTA4NjM4Yjg1ZjRhYTJkZjFiZWRkYTZiYzgwZjZkN2M1ZmY1OTljYmU3ZDI2Mw==';
   const defaultKey = Buffer.from(DEFAULT_KEY_B64, 'base64').toString('utf8');
 
   const groqKey = (provider === 'groq' && apiKey) || process.env.GROQ_API_KEY || '';

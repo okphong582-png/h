@@ -788,7 +788,7 @@ function App() {
     { id: 'meta-llama/llama-3.3-70b-instruct', name: 'WormGPT 4o (Llama 3.3 70B)', provider: 'openrouter', status: 'connected', description: 'Mô hình lập trình mạnh mẽ nhất, nhanh & chuẩn xác', isCloud: true },
     { id: 'gryphe/mythomax-l2-13b', name: 'MythoMax 13B (Uncensored)', provider: 'openrouter', status: 'connected', description: 'Không kiểm duyệt, tự do tối đa mọi chủ đề', isCloud: true },
     { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3 (Coding Beast)', provider: 'openrouter', status: 'connected', description: 'Chuyên sâu thuật toán và code phức tạp', isCloud: true },
-    { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Cloud)', provider: 'openai', status: 'connected', description: 'Nhanh nhẹn, tối ưu', isCloud: true }
+    { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini (Cloud)', provider: 'openrouter', status: 'connected', description: 'Nhanh nhẹn, tối ưu', isCloud: true }
   ]);
   const [activeModel, setActiveModel] = useState('meta-llama/llama-3.3-70b-instruct');
 
