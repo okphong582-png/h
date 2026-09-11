@@ -77,6 +77,35 @@ function deduceFilename(lang: string): string {
   }
 }
 
+// Extract code blocks into structured files
+function extractCodeFiles(content: string): { filename: string; code: string; lang: string }[] {
+  const files: { filename: string; code: string; lang: string }[] = [];
+  const regex = /```(\w+)?\n?([\s\S]*?)```/g;
+  let match;
+  let counter = 1;
+  while ((match = regex.exec(content)) !== null) {
+    const lang = (match[1] || 'code').trim();
+    const code = (match[2] || '').trim();
+    if (!code) continue;
+
+    let filename = '';
+    const firstLine = code.split('\n')[0].trim();
+    const fileCommentMatch = firstLine.match(/^(?:\/\/|#|\/\*|<!--)\s*([a-zA-Z0-9_\-./\\]+\.[a-zA-Z0-9]+)/);
+    if (fileCommentMatch) {
+      filename = fileCommentMatch[1].replace(/^[./\\]+/, '');
+    } else {
+      filename = deduceFilename(lang);
+      if (files.some(f => f.filename === filename)) {
+        const parts = filename.split('.');
+        const ext = parts.pop();
+        filename = `${parts.join('.')}_${counter++}.${ext}`;
+      }
+    }
+    files.push({ filename, code, lang });
+  }
+  return files;
+}
+
 // Download file directly
 function downloadCodeFile(filename: string, content: string) {
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -1199,6 +1228,15 @@ export default function App() {
   // Web File System Access API
   const [directoryHandle, setDirectoryHandle] = useState<any | null>(null);
   const [dirName, setDirName] = useState<string | null>(null);
+  const directoryHandleRef = useRef<any>(null);
+  const dirNameRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    directoryHandleRef.current = directoryHandle;
+    dirNameRef.current = dirName;
+  }, [directoryHandle, dirName]);
+
+  const [autoSaveNotification, setAutoSaveNotification] = useState<string | null>(null);
 
   // Thinking live timer
   const [thinkingElapsed, setThinkingElapsed] = useState(0);
@@ -1440,6 +1478,7 @@ export default function App() {
     }, 100);
 
     let recordedThinkingTime: number | undefined = undefined;
+    let aiText = '';
 
     try {
       const cleanHistory = [...messages, userMsg].slice(-10).map(m => ({
@@ -1468,7 +1507,6 @@ export default function App() {
 
       const reader = resp.body.getReader();
       const decoder = new TextDecoder('utf-8');
-      let aiText = '';
       let buffer = '';
       let streamDone = false;
 
@@ -1527,7 +1565,49 @@ export default function App() {
     } finally {
       clearInterval(thinkingTimerRef.current);
       const finalDuration = recordedThinkingTime ?? Number(((Date.now() - startTime) / 1000).toFixed(1));
-      updateAIMessage(currentSId, aiMsgId, currentSession.messages.find(m => m.id === aiMsgId)?.content || '', finalDuration);
+      
+      if (aiText) {
+        updateAIMessage(currentSId, aiMsgId, aiText, finalDuration);
+
+        // Auto-save code files to user's computer if code exists
+        try {
+          const files = extractCodeFiles(aiText);
+          if (files.length > 0) {
+            setCanvasData({
+              title: files[0].filename,
+              code: files[0].code,
+              lang: files[0].lang,
+              filename: files[0].filename
+            });
+            setIsCanvasOpen(true);
+
+            const curDir = directoryHandleRef.current;
+            if (curDir) {
+              let saved = 0;
+              for (const f of files) {
+                try {
+                  const fh = await curDir.getFileHandle(f.filename, { create: true });
+                  const wr = await fh.createWritable();
+                  await wr.write(f.code);
+                  await wr.close();
+                  saved++;
+                } catch (e) {
+                  console.error('Error saving file:', f.filename, e);
+                }
+              }
+              if (saved > 0) {
+                setAutoSaveNotification(`✅ Đã tự động lưu ${saved} tệp mã nguồn vào thư mục "${dirNameRef.current}" trên máy!`);
+                setTimeout(() => setAutoSaveNotification(null), 6000);
+              }
+            } else {
+              setAutoSaveNotification(`💡 AI đã tạo mã nguồn (${files.map(f => f.filename).join(', ')}). Nhấn "Chọn thư mục máy" ở trên để tự động lưu mã vào máy tính!`);
+              setTimeout(() => setAutoSaveNotification(null), 8000);
+            }
+          }
+        } catch (e) {
+          console.error('Auto save error:', e);
+        }
+      }
 
       setIsGenerating(false);
       isSendingRef.current = false;
@@ -1592,6 +1672,22 @@ export default function App() {
             onPickFolder={handlePickDirectory}
             onDisconnectFolder={handleDisconnectDirectory}
           />
+
+          {/* Auto-save notification banner */}
+          {autoSaveNotification && (
+            <div className="mx-4 mt-2 p-3 bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 rounded-2xl flex items-center justify-between text-xs font-semibold shadow-sm animate-chat-in">
+              <div className="flex items-center gap-2">
+                <FolderCheck size={16} className="text-emerald-500 flex-shrink-0" />
+                <span>{autoSaveNotification}</span>
+              </div>
+              <button
+                onClick={() => setAutoSaveNotification(null)}
+                className="p-1 rounded-lg hover:bg-emerald-500/20 transition-colors ml-2 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
 
           {/* Messages Viewport */}
           <main className="flex-1 overflow-y-auto no-scrollbar relative flex flex-col">
